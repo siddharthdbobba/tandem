@@ -109,6 +109,7 @@ All suites run against a live deployment:
 
 ```bash
 export CONVEX_URL=https://HOST:10000 UI_URL=https://HOST:10001 WORKER_HOST=your-vm WORKSPACES_DIR=/srv/tandem/workspaces
+node tests/translator.mjs             # 7: replays real captured jcode runs through the worker (offline)
 node tests/accounts.mjs               # 12: auth, saved settings, membership, per-user sandbox + isolation, connect flow
 node tests/smoke.mjs                  # 8: API, path validation, file sync, queueing, presence
 node tests/codex/tandem-e2e.mjs       # 10: adversarial checks, written by Codex

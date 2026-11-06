@@ -1,0 +1,51 @@
+{"model": "claude-opus-5-5", "provider": "Claude", "session_id": "session_ox_1793937325622_45a6ed57ef31d6a6", "type": "start"}
+{"connection": "https/sse", "type": "connection_type"}
+{"phase": "sending request", "type": "connection_phase"}
+{"phase": "waiting for response", "type": "connection_phase"}
+{"id": "toolu_011Qxyx6F64C1Z4tMBeMcWNS", "name": "write", "type": "tool_start"}
+{"phase": "streaming", "type": "connection_phase"}
+{"delta": "", "type": "tool_input"}
+{"delta": "{\"file_", "type": "tool_input"}
+{"delta": "path\": ", "type": "tool_input"}
+{"delta": "\"/ws/hi", "type": "tool_input"}
+{"delta": ".txt\", ", "type": "tool_input"}
+{"delta": "\"conten", "type": "tool_input"}
+{"delta": "t\": \"hi", "type": "tool_input"}
+{"delta": "\", \"int", "type": "tool_input"}
+{"delta": "ent\": \"", "type": "tool_input"}
+{"delta": "Create ", "type": "tool_input"}
+{"delta": "hi.txt\"", "type": "tool_input"}
+{"delta": "}", "type": "tool_input"}
+{"id": "toolu_011Qxyx6F64C1Z4tMBeMcWNS", "name": "write", "type": "tool_exec"}
+{"stop_reason": "tool_use", "type": "message_end"}
+{"cache_creation_input": 0, "cache_read_input": 38800, "input": 247, "output": 123, "type": "tokens"}
+{"error": null, "id": "toolu_011Qxyx6F64C1Z4tMBeMcWNS", "name": "write", "output": "Created /ws/hi.txt (1 lines):\n1+ hi\n\nFile diff:\n```diff\n--- /dev/null\n+++ b//ws/hi.txt\n@@ -0,0 +1 @@\n+hi\n\\ No newline at end of file\n```\n", "type": "tool_done"}
+{"connection": "https/sse", "type": "connection_type"}
+{"phase": "sending request", "type": "connection_phase"}
+{"phase": "waiting for response", "type": "connection_phase"}
+{"id": "toolu_019onkiu2HTANJQPGG9Qq8Za", "name": "bash", "type": "tool_start"}
+{"phase": "streaming", "type": "connection_phase"}
+{"delta": "", "type": "tool_input"}
+{"delta": "{\"comma", "type": "tool_input"}
+{"delta": "nd\": \"c", "type": "tool_input"}
+{"delta": "at hi.t", "type": "tool_input"}
+{"delta": "xt\", \"i", "type": "tool_input"}
+{"delta": "ntent\":", "type": "tool_input"}
+{"delta": " \"Show ", "type": "tool_input"}
+{"delta": "file co", "type": "tool_input"}
+{"delta": "ntents\"", "type": "tool_input"}
+{"delta": "}", "type": "tool_input"}
+{"id": "toolu_019onkiu2HTANJQPGG9Qq8Za", "name": "bash", "type": "tool_exec"}
+{"stop_reason": "tool_use", "type": "message_end"}
+{"cache_creation_input": 370, "cache_read_input": 38800, "input": 174, "output": 79, "type": "tokens"}
+{"error": null, "id": "toolu_019onkiu2HTANJQPGG9Qq8Za", "name": "bash", "output": "hi\n--- Command finished with exit code: 0 ---\n", "type": "tool_done"}
+{"connection": "https/sse", "type": "connection_type"}
+{"phase": "sending request", "type": "connection_phase"}
+{"phase": "waiting for response", "type": "connection_phase"}
+{"phase": "streaming", "type": "connection_phase"}
+{"text": "Done. `", "type": "text_delta"}
+{"text": "cat hi.txt`", "type": "text_delta"}
+{"text": " printed `hi`.", "type": "text_delta"}
+{"stop_reason": "end_turn", "type": "message_end"}
+{"cache_creation_input": 253, "cache_read_input": 39170, "input": 75, "output": 21, "type": "tokens"}
+{"connection_phase": "streaming", "connection_type": "https/sse", "model": "claude-opus-5-5", "provider": "Claude", "reported_service_tier": null, "requested_service_tier": null, "served_service_tier": null, "service_tier_report_status": "not_reported", "session_id": "session_ox_1793937325622_45a6ed57ef31d6a6", "status_detail": null, "text": "Done. `cat hi.txt` printed `hi`.", "type": "done", "upstream_provider": null, "usage": {"cache_creation_input_tokens": 253, "cache_read_input_tokens": 39170, "input_tokens": 75, "output_tokens": 21}}

@@ -1,0 +1,2 @@
+{"model": "claude-opus-5-5", "provider": "Claude", "session_id": "session_mosquito_1793937428575_e06f29815bf50a15", "type": "start"}
+{"message": "No tokens/providers left: no usable provider right now. Anthropic/OpenAI usage may be exhausted and GitHub Copilot is not authenticated or currently unavailable. Details: Anthropic: not configured Use `/usage` to check limits and `/login <provider>` to re-authenticate.", "model": "claude-opus-5-5", "provider": "Claude", "session_id": "session_mosquito_1793937428575_e06f29815bf50a15", "type": "error"}

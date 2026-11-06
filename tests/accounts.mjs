@@ -132,6 +132,7 @@ await test("connect flow: worker produces a real auth URL in the user's sandbox"
     return x && x.status !== "submitting" && x;
   }, 90_000, "submit result");
   assert.equal(after.status, "error");
+  assert.match(after.error, /didn't match this sign-in/); // jcode's state-mismatch, made readable
   assert.equal((await alice.query(api.profile.me, {})).connections.find((c) => c.provider === "claude"), undefined);
 });
 

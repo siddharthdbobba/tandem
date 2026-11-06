@@ -1,0 +1,104 @@
+{"model": "claude-opus-5-5", "provider": "Claude", "session_id": "session_tulip_1793940499554_7de44351ee79f41c", "type": "start"}
+{"connection": "https/sse", "type": "connection_type"}
+{"phase": "sending request", "type": "connection_phase"}
+{"phase": "waiting for response", "type": "connection_phase"}
+{"id": "toolu_012mKtoatuzkrFbZU4GRz8tB", "name": "edit", "type": "tool_start"}
+{"phase": "streaming", "type": "connection_phase"}
+{"delta": "", "type": "tool_input"}
+{"delta": "{\"file_", "type": "tool_input"}
+{"delta": "path\": ", "type": "tool_input"}
+{"delta": "\"notes.", "type": "tool_input"}
+{"delta": "txt\"", "type": "tool_input"}
+{"delta": ", \"old_", "type": "tool_input"}
+{"delta": "string\"", "type": "tool_input"}
+{"delta": ": \"line", "type": "tool_input"}
+{"delta": " two\"", "type": "tool_input"}
+{"delta": ", \"new_", "type": "tool_input"}
+{"delta": "string\"", "type": "tool_input"}
+{"delta": ": \"line", "type": "tool_input"}
+{"delta": " 2\"", "type": "tool_input"}
+{"delta": ", \"inte", "type": "tool_input"}
+{"delta": "nt\": \"E", "type": "tool_input"}
+{"delta": "dit not", "type": "tool_input"}
+{"delta": "es.txt\"}", "type": "tool_input"}
+{"id": "toolu_012mKtoatuzkrFbZU4GRz8tB", "name": "edit", "type": "tool_exec"}
+{"id": "toolu_013hF3jBr4Q9ZM1TscG3y71P", "name": "write", "type": "tool_start"}
+{"delta": "", "type": "tool_input"}
+{"delta": "{\"file_", "type": "tool_input"}
+{"delta": "path\": ", "type": "tool_input"}
+{"delta": "\"sub/ne", "type": "tool_input"}
+{"delta": "w.py\"", "type": "tool_input"}
+{"delta": ", \"cont", "type": "tool_input"}
+{"delta": "ent\": \"", "type": "tool_input"}
+{"delta": "print(4", "type": "tool_input"}
+{"delta": "2)\\n\"", "type": "tool_input"}
+{"delta": ", \"inte", "type": "tool_input"}
+{"delta": "nt\": \"C", "type": "tool_input"}
+{"delta": "reate s", "type": "tool_input"}
+{"delta": "ub/new.", "type": "tool_input"}
+{"delta": "py\"}", "type": "tool_input"}
+{"id": "toolu_013hF3jBr4Q9ZM1TscG3y71P", "name": "write", "type": "tool_exec"}
+{"stop_reason": "tool_use", "type": "message_end"}
+{"cache_creation_input": 0, "cache_read_input": 38800, "input": 320, "output": 235, "type": "tokens"}
+{"error": null, "id": "toolu_012mKtoatuzkrFbZU4GRz8tB", "name": "edit", "output": "Edited notes.txt: replaced 1 occurrence(s)\n2- line two\n2+ line 2\n\nContext after edit (lines 1-2):\n   1\u2502 line one\n   2\u2502 line 2\n\nFile diff:\n```diff\n--- a/notes.txt\n+++ b/notes.txt\n@@ -1,2 +1,2 @@\n line one\n-line two\n+line 2\n```\n", "type": "tool_done"}
+{"error": null, "id": "toolu_013hF3jBr4Q9ZM1TscG3y71P", "name": "write", "output": "Created sub/new.py (1 lines):\n1+ print(42)\n\nFile diff:\n```diff\n--- /dev/null\n+++ b/sub/new.py\n@@ -0,0 +1 @@\n+print(42)\n```\n", "type": "tool_done"}
+{"connection": "https/sse", "type": "connection_type"}
+{"phase": "sending request", "type": "connection_phase"}
+{"phase": "waiting for response", "type": "connection_phase"}
+{"id": "toolu_011wDrfD1ZbY8jPe5UxcEV6W", "name": "bash", "type": "tool_start"}
+{"phase": "streaming", "type": "connection_phase"}
+{"delta": "", "type": "tool_input"}
+{"delta": "{\"comma", "type": "tool_input"}
+{"delta": "nd\": \"p", "type": "tool_input"}
+{"delta": "ython3 ", "type": "tool_input"}
+{"delta": "sub/new", "type": "tool_input"}
+{"delta": ".py\"", "type": "tool_input"}
+{"delta": ", \"inte", "type": "tool_input"}
+{"delta": "nt\": \"R", "type": "tool_input"}
+{"delta": "un new.", "type": "tool_input"}
+{"delta": "py\"}", "type": "tool_input"}
+{"id": "toolu_011wDrfD1ZbY8jPe5UxcEV6W", "name": "bash", "type": "tool_exec"}
+{"stop_reason": "tool_use", "type": "message_end"}
+{"cache_creation_input": 555, "cache_read_input": 38800, "input": 354, "output": 81, "type": "tokens"}
+{"error": null, "id": "toolu_011wDrfD1ZbY8jPe5UxcEV6W", "name": "bash", "output": "42\n\n--- Command finished with exit code: 0 ---\n", "type": "tool_done"}
+{"connection": "https/sse", "type": "connection_type"}
+{"phase": "sending request", "type": "connection_phase"}
+{"phase": "waiting for response", "type": "connection_phase"}
+{"id": "toolu_019MyumRewHGGsnxbomzSx84", "name": "bash", "type": "tool_start"}
+{"phase": "streaming", "type": "connection_phase"}
+{"delta": "", "type": "tool_input"}
+{"delta": "{\"comma", "type": "tool_input"}
+{"delta": "nd\": \"c", "type": "tool_input"}
+{"delta": "at miss", "type": "tool_input"}
+{"delta": "ing-fil", "type": "tool_input"}
+{"delta": "e.txt\"", "type": "tool_input"}
+{"delta": ", \"inte", "type": "tool_input"}
+{"delta": "nt\": \"C", "type": "tool_input"}
+{"delta": "at miss", "type": "tool_input"}
+{"delta": "ing fil", "type": "tool_input"}
+{"delta": "e\"}", "type": "tool_input"}
+{"id": "toolu_019MyumRewHGGsnxbomzSx84", "name": "bash", "type": "tool_exec"}
+{"stop_reason": "tool_use", "type": "message_end"}
+{"cache_creation_input": 435, "cache_read_input": 39355, "input": 75, "output": 82, "type": "tokens"}
+{"error": null, "id": "toolu_019MyumRewHGGsnxbomzSx84", "name": "bash", "output": "cat: missing-file.txt: No such file or directory\n\n--- Command finished with exit code: 1 ---\n\n\nExit code: 1", "type": "tool_done"}
+{"connection": "https/sse", "type": "connection_type"}
+{"phase": "sending request", "type": "connection_phase"}
+{"phase": "waiting for response", "type": "connection_phase"}
+{"phase": "streaming", "type": "connection_phase"}
+{"text": "I", "type": "text_delta"}
+{"text": " chang", "type": "text_delta"}
+{"text": "ed notes.txt to", "type": "text_delta"}
+{"text": " say 'line 2', and", "type": "text_delta"}
+{"text": " sub/new.py printed", "type": "text_delta"}
+{"text": " 42 ", "type": "text_delta"}
+{"text": "when run;", "type": "text_delta"}
+{"text": " `", "type": "text_delta"}
+{"text": "cat missing-file.tx", "type": "text_delta"}
+{"text": "t` failed because", "type": "text_delta"}
+{"text": " the file doesn't exist", "type": "text_delta"}
+{"text": ", as you said", "type": "text_delta"}
+{"text": " it", "type": "text_delta"}
+{"text": " would.", "type": "text_delta"}
+{"stop_reason": "end_turn", "type": "message_end"}
+{"cache_creation_input": 157, "cache_read_input": 39790, "input": 97, "output": 62, "type": "tokens"}
+{"connection_phase": "streaming", "connection_type": "https/sse", "model": "claude-opus-5-5", "provider": "Claude", "reported_service_tier": null, "requested_service_tier": null, "served_service_tier": null, "service_tier_report_status": "not_reported", "session_id": "session_tulip_1793940499554_7de44351ee79f41c", "status_detail": null, "text": "I changed notes.txt to say 'line 2', and sub/new.py printed 42 when run; `cat missing-file.txt` failed because the file doesn't exist, as you said it would.", "type": "done", "upstream_provider": null, "usage": {"cache_creation_input_tokens": 157, "cache_read_input_tokens": 39790, "input_tokens": 97, "output_tokens": 62}}

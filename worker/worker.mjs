@@ -7,6 +7,7 @@ import { anyApi } from "convex/server";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { AUTH_ERR, clip, translator } from "./events.mjs";
 
 const api = anyApi;
 const URL = process.env.CONVEX_URL ?? "http://127.0.0.1:3310";
@@ -122,8 +123,6 @@ client.onUpdate(api.worker.pendingWrites, s, async (files) => {
 
 // ---------- agent runs (Jcode, as the prompter's sandbox user) ----------
 
-const clip = (t, n = 4000) => (t.length > n ? t.slice(0, n) + `\n... (${t.length - n} more chars)` : t);
-
 // Every agent and login runs through the root launcher as the account's own
 // Linux user, with HOME/JCODE_HOME in that user's private directory. That is
 // what keeps one person's subscription tokens away from everyone else.
@@ -134,16 +133,18 @@ function jcodeAs(sandboxKey, cwd, args) {
   });
 }
 
-const AUTH_ERR = /no usable provider|not configured|re-authenticate|unauthori[sz]ed|invalid.*token|401/i;
-
 async function runOne(run, job) {
   const dir = dirFor(run.workspaceId);
   const prompt =
     `[Tandem shared workspace. Prompt from ${run.author}. Other people and agents may be ` +
     `editing files in this directory at the same time, so re-read files before editing them. ` +
     `Keep all work inside the current directory.]\n\n${run.prompt}`;
+  // Events are written in order: each waits for the previous one.
+  let chain = Promise.resolve();
   const emit = (kind, text) =>
-    client.mutation(api.worker.appendEvent, { ...s, runId: run._id, kind, text }).catch(() => {});
+    (chain = chain.then(() =>
+      client.mutation(api.worker.appendEvent, { ...s, runId: run._id, kind, text }).catch(() => {}),
+    ));
 
   const args = ["run", "--ndjson", "--no-update", "--quiet", "-p", job.provider];
   if (job.model) args.push("-m", job.model);
@@ -160,18 +161,17 @@ async function runOne(run, job) {
   active.set(run._id, child);
 
   // Stop the agent if anyone hits cancel.
+  let cancelled = false;
   const unsub = client.onUpdate(api.worker.runStatus, { ...s, runId: run._id }, (st) => {
-    if (st === "cancelled") child.kill("SIGTERM");
+    if (st === "cancelled" && !cancelled) {
+      cancelled = true;
+      child.kill("SIGTERM");
+      // sudo forwards SIGTERM to jcode, which stops its tools. Escalate if it hangs.
+      setTimeout(() => child.exitCode === null && child.kill("SIGKILL"), 10_000).unref();
+    }
   });
 
-  let sessionId = null;
-  let text = "";
-  let failed = null;
-  const tools = new Map(); // tool id -> { name, input }
-  const flushText = () => {
-    if (text.trim()) emit("message", text.trim());
-    text = "";
-  };
+  const tr = translator(dir);
   let buf = "";
   let stderr = "";
   child.stdout.on("data", (chunk) => {
@@ -186,68 +186,37 @@ async function runOne(run, job) {
       } catch {
         continue;
       }
-      switch (ev.type) {
-        case "start":
-          sessionId = ev.session_id ?? sessionId;
-          break;
-        case "text_delta":
-          text += ev.text ?? "";
-          break;
-        case "tool_start":
-          flushText();
-          tools.set(ev.id, { name: ev.name, input: "" });
-          break;
-        case "tool_input": {
-          const t = [...tools.values()].at(-1);
-          if (t) t.input += ev.delta ?? "";
-          break;
-        }
-        case "tool_done": {
-          const t = tools.get(ev.id) ?? { name: ev.name, input: "" };
-          let input = {};
-          try { input = JSON.parse(t.input || "{}"); } catch {}
-          const out = ev.error ? `error: ${ev.error}` : (ev.output ?? "");
-          if (t.name === "bash") emit("command", `$ ${input.command ?? ""}\n${clip(out)}`);
-          else if (["write", "edit", "apply_patch", "multiedit"].includes(t.name))
-            emit("file", `${t.name} ${input.file_path ? path.relative(dir, input.file_path) || input.file_path : ""}`.trim());
-          else emit("command", `${t.name}${input.file_path ? " " + input.file_path : ""}${ev.error ? "\n" + clip(out, 800) : ""}`);
-          if (t.name !== "read") safeSync(run.workspaceId);
-          break;
-        }
-        case "message_end":
-          flushText();
-          break;
-        case "done":
-          flushText();
-          sessionId = ev.session_id ?? sessionId;
-          break;
-        case "error":
-          failed = ev.message ?? JSON.stringify(ev);
-          emit("error", failed);
-          break;
-      }
+      for (const e of tr.feed(ev)) emit(e.kind, e.text);
+      if (tr.takeTouched()) safeSync(run.workspaceId);
     }
   });
   child.stderr.on("data", (c) => (stderr = (stderr + c).slice(-2000)));
 
   const code = await new Promise((res) => child.on("close", res));
   unsub();
-  flushText();
+  for (const e of tr.end()) emit(e.kind, e.text);
   active.delete(run._id);
-  if (code !== 0 && !child.killed && !failed) await emit("error", `agent exited ${code}\n${stderr.trim()}`);
+  const failed = tr.failed;
+  if (code !== 0 && !cancelled && !failed) emit("error", `agent exited ${code}\n${stderr.trim()}`);
   const why = failed ?? stderr;
-  if (code !== 0 && AUTH_ERR.test(why)) {
-    await emit("error", `${run.author}'s ${job.provider} subscription isn't connected or has expired. Connect it in Settings.`);
+  if (code !== 0 && !cancelled && AUTH_ERR.test(why)) {
+    emit("error", `${run.author}'s ${job.provider} subscription isn't connected or has expired. Connect it in Settings.`);
     await client.mutation(api.worker.setConnection, {
       ...s, sandboxKey: job.sandboxKey, provider: job.provider, status: "error", detail: clip(why, 280),
     }).catch(() => {});
+  } else if (code === 0) {
+    // A successful run proves the login works.
+    await client.mutation(api.worker.setConnection, {
+      ...s, sandboxKey: job.sandboxKey, provider: job.provider, status: "connected",
+    }).catch(() => {});
   }
+  await chain;
   await safeSync(run.workspaceId);
   await client.mutation(api.worker.finish, {
     ...s,
     runId: run._id,
     status: code === 0 ? "done" : "error",
-    sessionId: sessionId ?? undefined,
+    sessionId: tr.sessionId ?? undefined,
   });
   log("finished", run._id, code);
 }
@@ -265,10 +234,12 @@ function jcodeJson(sandboxKey, args, timeoutMs = 60_000) {
     child.stderr.on("data", (c) => (err += c));
     child.on("close", (code) => {
       clearTimeout(t);
-      const lines = out.trim().split("\n").reverse();
+      // Whole output may be one pretty-printed object; else take the last JSON line.
       let json = null;
-      for (const l of lines) {
-        try { json = JSON.parse(l); break; } catch {}
+      try { json = JSON.parse(out.trim()); } catch {
+        for (const l of out.trim().split("\n").reverse()) {
+          try { json = JSON.parse(l); break; } catch {}
+        }
       }
       resolve({ code, json, err: err.trim() });
     });
@@ -305,12 +276,20 @@ async function handleLogin(f) {
         "login", f.provider, "--json", "--flow-id", flowId, "--no-update",
         asUrl ? "--callback-url" : "--auth-code", code,
       ], 90_000);
-      const ok = r.code === 0 && !(r.json && /error|failed/i.test(String(r.json.status ?? "")));
+      // Don't trust the exit code alone: ask jcode whether this sandbox now
+      // actually has a usable login for the provider.
+      const st = await jcodeJson(f.sandboxKey, ["auth", "status", "--json", "--no-update"], 60_000);
+      const prov = st.json?.providers?.find((p) => p.id === f.provider);
+      const ok = r.code === 0 && prov?.status === "available";
+      const err = (r.err || r.json?.error || r.json?.message || "login failed")
+        .toString().split("\n")[0].replace(/^Error:\s*/, "");
       await client.mutation(api.worker.loginUpdate, {
         ...s, flowId: f._id, from: "submitting", status: ok ? "done" : "error",
-        error: ok ? undefined : (r.json?.error ?? r.json?.message ?? r.err ?? "login failed").toString(),
+        error: ok ? undefined : /state mismatch/i.test(err)
+          ? "That code didn't match this sign-in. Click Try again and paste the newest code."
+          : err,
       });
-      log("login finished", f.provider, f.sandboxKey, ok ? "ok" : "failed");
+      log("login finished", f.provider, f.sandboxKey, ok ? "ok" : `failed (${prov?.status ?? "?"})`);
     }
   } catch (e) {
     log("login error", e.message);

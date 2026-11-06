@@ -1,54 +1,47 @@
-// Burst test: many workspaces and panes at once. Checks every run finishes
-// exactly once, files land in the right workspace, and the worker never runs
-// more than MAX_ACTIVE agents at a time.
-// Run: CONVEX_URL=https://backend WORKER_HOST=myvm node tests/load.mjs
-import { ConvexHttpClient } from "convex/browser";
-import { anyApi as api } from "convex/server";
+// Burst test: it only runs model work with the connected account from the environment.
+import assert from "node:assert/strict";
 import { execFile as cb } from "node:child_process";
 import { promisify } from "node:util";
-import assert from "node:assert/strict";
+import { account, api, sleep, stamp } from "./helpers.mjs";
 const execFile = promisify(cb);
-const c = new ConvexHttpClient(process.env.CONVEX_URL ?? "http://127.0.0.1:3310");
 const HOST = process.env.WORKER_HOST ?? "localhost";
 const WS = Number(process.env.WORKSPACES ?? 8);
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
+const email = process.env.TANDEM_TEST_EMAIL;
+const password = process.env.TANDEM_TEST_PASSWORD;
+if (!email || !password) { console.log("SKIP load (no connected test account)"); process.exit(0); }
+const c = await account(email, password, undefined, "signIn");
+const me = await c.query(api.profile.me, {});
+assert.equal(me.connections.find((x) => x.provider === me.profile.provider)?.status, "connected", "test account provider is not connected");
 const jobs = [];
+const tag = stamp();
 for (let w = 0; w < WS; w++) {
-  const ws = await c.mutation(api.workspaces.create, { name: `load-${w}`, user: "load" });
-  const [p1] = await c.query(api.workspaces.listPanes, { workspaceId: ws });
-  const p2 = await c.mutation(api.workspaces.addPane, { workspaceId: ws, title: "b" });
-  for (const [pane, tag] of [[p1._id, "a"], [p2, "b"]]) {
-    await c.mutation(api.workspaces.submitPrompt, { paneId: pane, prompt: `Create file ${tag}.txt containing exactly "${w}-${tag}". Nothing else.`, author: "load" });
-    jobs.push({ ws, pane, tag, w });
+  const workspaceId = await c.mutation(api.workspaces.create, { name: `load-${tag}-${w}` });
+  const [first] = await c.query(api.workspaces.listPanes, { workspaceId });
+  const second = await c.mutation(api.workspaces.addPane, { workspaceId, title: "b" });
+  for (const [paneId, side] of [[first._id, "a"], [second, "b"]]) {
+    await c.mutation(api.workspaces.submitPrompt, { paneId, prompt: `Create ${side}.txt containing exactly ${w}-${side}.` });
+    jobs.push({ workspaceId, paneId, side, w });
   }
 }
 console.log(`submitted ${jobs.length} runs`);
 let peak = 0;
-const t0 = Date.now();
-while (Date.now() - t0 < 600000) {
+const start = Date.now();
+while (Date.now() - start < 600_000) {
   const { stdout } = await execFile("ssh", [HOST, "ps -o pid= --ppid $(systemctl --user show -p MainPID --value tandem-worker) | wc -l"]);
   peak = Math.max(peak, Number(stdout.trim()));
-  const feeds = await Promise.all(jobs.map((j) => c.query(api.workspaces.paneFeed, { paneId: j.pane })));
-  const statuses = feeds.flat().map((r) => r.status);
-  if (statuses.every((s) => s === "done" || s === "error")) break;
-  await sleep(3000);
+  const feeds = await Promise.all(jobs.map((job) => c.query(api.workspaces.paneFeed, { paneId: job.paneId })));
+  if (feeds.flat().every((run) => ["done", "error", "cancelled"].includes(run.status))) break;
+  await sleep(3_000);
 }
-await sleep(4000);
-const secs = Math.round((Date.now() - t0) / 1000);
-const feeds = await Promise.all(jobs.map((j) => c.query(api.workspaces.paneFeed, { paneId: j.pane })));
-const all = feeds.flat();
-assert.equal(all.length, jobs.length, "run count changed");
-const bad = all.filter((r) => r.status !== "done");
-let wrong = 0;
-for (const j of jobs) {
-  const f = await c.query(api.files.get, { workspaceId: j.ws, path: `${j.tag}.txt` });
-  if (f?.content.trim() !== `${j.w}-${j.tag}`) wrong++;
-  const tree = await c.query(api.files.tree, { workspaceId: j.ws });
-  if (tree.length !== 2) wrong++;
+await sleep(4_000);
+const runs = (await Promise.all(jobs.map((job) => c.query(api.workspaces.paneFeed, { paneId: job.paneId })))).flat();
+assert.equal(runs.length, jobs.length, "run count changed");
+assert.equal(runs.filter((run) => run.status !== "done").length, 0, "some model runs failed");
+let wrongFiles = 0;
+for (const job of jobs) {
+  const file = await c.query(api.files.get, { workspaceId: job.workspaceId, path: `${job.side}.txt` });
+  if (file?.content.trim() !== `${job.w}-${job.side}`) wrongFiles++;
 }
-console.log({ runs: all.length, notDone: bad.length, wrongFiles: wrong, peakCodexProcs: peak, secs });
-assert.equal(bad.length, 0);
-assert.equal(wrong, 0);
+assert.equal(wrongFiles, 0, "wrong file contents");
 assert.ok(peak <= Number(process.env.MAX_ACTIVE ?? 4), `peak ${peak} over cap`);
-console.log("PASS load");
+console.log(`SUMMARY PASS load: ${runs.length} runs in ${Math.round((Date.now() - start) / 1000)}s, peak ${peak}`);

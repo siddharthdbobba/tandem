@@ -8,6 +8,8 @@
     "worker": "node worker/worker.mjs"
   },
   "dependencies": {
+    "@auth/core": "^0.41.3",
+    "@convex-dev/auth": "^0.0.96",
     "convex": "^1.49.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"

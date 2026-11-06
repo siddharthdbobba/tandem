@@ -1,8 +1,10 @@
 # Tandem
 
-A multiplayer coding agent. Think Google Drive folder plus a terminal: everyone with the link shares one project directory, opens as many prompt panes as they want, and watches every agent's output stream in live. Files the agents write show up in the sidebar instantly, and anyone can edit them in the browser.
+A multiplayer coding agent. Think Google Drive folder plus a terminal: you sign in, create a workspace, and share an invite link. Everyone in it shares one project directory, opens as many prompt panes as they want, and watches every agent's output stream in live. Files the agents write show up in the sidebar instantly, and anyone can edit them in the browser.
 
-Built on [Convex](https://convex.dev) (self-hosted) with React and a small Node worker that drives the Codex CLI.
+Each person's prompts run through the [Jcode](https://github.com/1jehuang/jcode) agent harness **on that person's own AI subscription** (Claude Pro/Max or ChatGPT Plus/Pro), connected once in Settings and saved to their account. A friend joining from their laptop uses their subscription, not yours.
+
+Built on [Convex](https://convex.dev) (self-hosted, with Convex Auth) plus React and a small Node worker.
 
 ![screenshot](docs/screenshot.png)
 
@@ -10,92 +12,116 @@ Built on [Convex](https://convex.dev) (self-hosted) with React and a small Node 
 
 ```mermaid
 flowchart LR
-  A[Browser A] <-- live queries --> C[(Convex)]
-  B[Browser B] <-- live queries --> C
+  A[Alice's browser] <-- live queries --> C[(Convex)]
+  B[Bob's browser] <-- live queries --> C
   C <-- subscriptions + mutations --> W[Worker on VM]
-  W -- spawns --> X[codex exec]
-  X -- reads/writes --> D[/workspace dir/]
+  W -- "sudo tandem-as alice" --> XA[jcode run as tdu_alice]
+  W -- "sudo tandem-as bob" --> XB[jcode run as tdu_bob]
+  XA -- reads/writes --> D[/shared workspace dir/]
+  XB -- reads/writes --> D
   W -- syncs both ways --> D
 ```
 
-1. Someone types a prompt. A mutation inserts a `runs` row with status `queued`.
-2. The worker holds a live subscription on queued runs, so Convex pushes the new run to it immediately (no polling, no queue service).
-3. The worker claims the run in a mutation. Convex mutations are serializable transactions, so a run is never picked up twice, and each pane runs one prompt at a time.
-4. The worker spawns `codex exec --json` in that workspace's directory and turns each agent event (message, shell command, file change) into an `events` row. Every browser subscribed to the pane re-renders as rows land.
-5. Agent file writes get mirrored into the `files` table. Browser edits set `pendingWrite`, the worker sees them through another subscription and writes them to disk.
-6. Each pane stores its Codex thread id, so follow-up prompts keep context.
-7. Presence (avatars, who is looking at which pane) is a heartbeat mutation plus a query.
+1. Someone signs in (Convex Auth, email + password) and types a prompt. A mutation inserts a `runs` row tied to their user id. The author name comes from their account, not the client.
+2. The worker holds a live subscription on queued runs, so Convex pushes the new run to it immediately.
+3. The worker claims the run in a transactional mutation that also returns **the prompter's** saved provider, model, sandbox key and conversation id. One prompt per pane at a time, and a run is never claimed twice.
+4. The worker runs `jcode run --ndjson` as that person's own Linux user (`tdu_<key>`) in the shared workspace directory, and turns each event (text, shell command, file edit) into an `events` row. Every viewer re-renders live, with a tag showing whose subscription it ran on.
+5. Agent file writes get mirrored into the `files` table. Browser edits set `pendingWrite`, and the worker writes them to disk.
+6. Context is kept per (pane, person): each person's follow-ups resume their own Jcode session.
+
+### Accounts and saved configuration
+
+The `profiles` table holds each account's display name, color, default subscription (Claude or ChatGPT) and optional model override. Settings save instantly and follow you to any device.
+
+To connect a subscription, Settings creates a `loginFlows` row. The worker runs `jcode login <provider> --print-auth-url` **inside that person's sandbox** and puts the sign-in URL back in the row. The person approves it in their own browser and pastes the code (Claude) or final URL (ChatGPT) back. The worker finishes the login in their sandbox and clears the code from the database. Tokens never touch Convex. Only a `connections` status row does.
+
+### Isolation
+
+`deploy/tandem-as` is a small root-owned launcher, the only thing the worker can `sudo`. It:
+
+- creates one system user per account on first use, with a `0700` home that holds that person's Jcode credentials and sessions
+- only runs `jcode`, only with a working directory inside `/srv/tandem/workspaces`, and clears the environment
+- drops all capabilities
+- keeps every workspace directory private: no group or other access, plus an ACL entry per member, added when that member's run is claimed. An agent can only touch workspaces its owner belongs to, and nobody can list the workspace root
+
+An `nftables` rule (`deploy/setup-vm.sh`) blocks sandbox users from loopback services and private networks, apart from DNS. `tests/accounts.mjs` checks all of this against the live VM: a sandbox user can't read another user's credentials, a workspace it isn't a member of, the operator's home, or the Convex admin key, and can't reach Convex on localhost. It can still reach the public internet and its own workspaces.
 
 ## Why Convex fits
 
-Almost everything here is "shared state that many clients need to see change live." Normally that means Postgres, a websocket server, a job queue, and cache invalidation. With Convex it's queries and mutations:
-
 | Need | Convex piece |
 | --- | --- |
+| Accounts, sessions | Convex Auth (`convex/auth.ts`) |
+| Per-user saved config | `profiles`, `connections` tables |
 | Live agent output for every viewer | reactive `useQuery` on `paneFeed` |
-| Job queue for prompts | `runs` table plus worker subscription |
+| Job queue for prompts and logins | `runs`, `loginFlows` plus worker subscriptions |
 | No double-claimed jobs | transactional `claim` mutation |
-| Shared file tree | `files` table, live |
+| Membership and invites | `members` table, `requireMember` in every function |
+| Shared file tree | `files` (metadata) and `contents` tables, live |
 | Who's online | `presence` table |
+| Cleanup | cron in `convex/crons.ts` |
 
-What Convex doesn't do: run arbitrary processes. The agent needs a real shell and filesystem, so that part lives in the worker on a VM. Convex is the coordination layer.
+Convex can't run processes. The agent needs a real shell, a filesystem, and per-user OS isolation, so that part lives in the worker on a VM. Convex is the coordination layer.
 
 ## Layout
 
 ```
-convex/      schema and functions (workspaces, files, presence, worker API)
-src/         React UI
-worker/      Node worker that runs codex and syncs files
+convex/      schema, auth, and functions (workspaces, files, presence, profile, worker API)
+src/         React UI (sign-in, workspaces, settings/connect, panes, editor)
+worker/      Node worker: runs jcode per user, drives logins, syncs files
+deploy/      VM setup: tandem-as launcher, sudoers, firewall
+tests/       live end-to-end suites
 ```
 
 ## Run it
 
-Self-hosted backend (or swap in a Convex cloud deployment):
-
 ```bash
-# backend
-./convex-local-backend --port 3310 --site-proxy-port 3311 --instance-name tandem --instance-secret <secret>
+# 1. backend (self-hosted Convex), exposed at https://HOST:10000, HTTP actions at :10002
+./convex-local-backend --interface 127.0.0.1 --port 3310 --site-proxy-port 3311 \
+  --instance-name tandem --instance-secret <secret> \
+  --convex-origin https://HOST:10000 --convex-site https://HOST:10002
 ./convex-local-backend keygen admin-key --instance-name tandem --instance-secret <secret>
 
-# functions
+# 2. functions + auth keys
 echo "CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3310" > .env.local
 echo "CONVEX_SELF_HOSTED_ADMIN_KEY=<admin key>" >> .env.local
 npm install
 npx convex env set WORKER_SECRET <random>
+npx convex env set SITE_URL https://HOST:10001
+npx convex env set JWT_PRIVATE_KEY -- "<RS256 PKCS8, newlines as spaces>"
+npx convex env set JWKS '<{"keys":[...]}>'
 npx convex deploy
 
-# worker (needs codex CLI logged in)
+# 3. VM sandboxing (Linux, once)
+sudo JCODE_BIN=/path/to/jcode WORKER_USER=$USER bash deploy/setup-vm.sh
+
+# 4. worker
 WORKER_SECRET=<random> CONVEX_URL=http://127.0.0.1:3310 npm run worker
 
-# UI
-VITE_CONVEX_URL=https://your-backend npm run build   # serve dist/
+# 5. UI
+VITE_CONVEX_URL=https://HOST:10000 npm run build   # serve dist/
 ```
 
-I run all three as systemd user services on an Oracle ARM VM, exposed over Tailscale only.
+I run the backend, worker and UI as systemd user services on an Oracle ARM VM, exposed over Tailscale only.
 
 ## Testing
 
-All suites run against a live deployment and drive real agent runs:
+All suites run against a live deployment:
 
 ```bash
-export CONVEX_URL=https://your-backend UI_URL=https://your-ui WORKER_HOST=your-vm WORKSPACES_DIR=/home/you/tandem-workspaces
-node tests/smoke.mjs                  # 7 API checks
-node tests/codex/tandem-e2e.mjs       # 10 adversarial checks, written by Codex
-node tests/multiplayer-ui.mjs         # 6 checks with two real headless browsers
-node tests/load.mjs                   # 16 runs across 8 workspaces at once
-node tests/codex/ui-smoke.mjs <workspaceId> [screenshot.png]
+export CONVEX_URL=https://HOST:10000 UI_URL=https://HOST:10001 WORKER_HOST=your-vm WORKSPACES_DIR=/srv/tandem/workspaces
+node tests/accounts.mjs               # 12: auth, saved settings, membership, per-user sandbox + isolation, connect flow
+node tests/smoke.mjs                  # 8: API, path validation, file sync, queueing, presence
+node tests/codex/tandem-e2e.mjs       # 10: adversarial checks, written by Codex
+node tests/multiplayer-ui.mjs         # 6: two real headless browsers signing in through the UI
+node tests/load.mjs                   # burst across many workspaces, concurrency cap
 ```
 
-Coverage: concurrent panes, streaming before a run finishes, in-order queueing with no double runs, follow-up context, cancel (process actually killed), two-way file sync, path traversal, worker auth, pane deletion mid-run, unicode/long output, presence, live cross-browser editing (an unsaved draft is never clobbered), and a burst load that holds the concurrency cap. `tests/codex/REPORT.md` is the Codex QA report, including the bug it caught (deleting a running pane stranded the run), which is fixed.
-
-Robustness:
-- The worker runs at most `MAX_ACTIVE` agents (default 4). Extra prompts wait in the queue.
-- When the worker starts, it marks runs left `running` by a dead worker as errored. A Convex cron (`convex/crons.ts`) cancels runs whose pane was deleted.
-- File contents live in their own table, so the file tree query reads metadata only (a 14 MB workspace was pushing the 16 MB per-query read limit before this split). Pane feeds show the latest 30 runs.
-- The worker reconnects on its own when the Convex backend restarts.
+Checks that need a model to answer (agent writes files, streaming, follow-up context, cancel, load) sign in with a connected account from `TANDEM_TEST_EMAIL` / `TANDEM_TEST_PASSWORD` and are skipped without one. Everything else always runs.
 
 ## Limits (it's a toy)
 
-- No auth beyond a display name. Keep it on a private network. The agent runs with its sandbox off, so anyone with access can run shell commands on the box.
+- Tailnet only. Members of a workspace can make agents run shell commands as their own sandbox user, and that user can reach the internet.
+- A member's agent can edit any file in the workspaces they belong to (that's the point of sharing).
 - Text files only, under 400 KB. Binary files and `node_modules`/`.git` are not mirrored.
 - File edits are last-write-wins, not character-level merging.
+- No email verification or password reset.

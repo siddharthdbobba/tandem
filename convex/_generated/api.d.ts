@@ -8,11 +8,14 @@
  * @module
  */
 
+import type * as auth from "../auth.js";
 import type * as crons from "../crons.js";
 import type * as files from "../files.js";
+import type * as http from "../http.js";
 import type * as lib from "../lib.js";
 import type * as maintenance from "../maintenance.js";
 import type * as presence from "../presence.js";
+import type * as profile from "../profile.js";
 import type * as worker from "../worker.js";
 import type * as workspaces from "../workspaces.js";
 
@@ -23,11 +26,14 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  auth: typeof auth;
   crons: typeof crons;
   files: typeof files;
+  http: typeof http;
   lib: typeof lib;
   maintenance: typeof maintenance;
   presence: typeof presence;
+  profile: typeof profile;
   worker: typeof worker;
   workspaces: typeof workspaces;
 }>;

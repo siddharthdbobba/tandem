@@ -1,0 +1,60 @@
+#!/bin/bash
+# tandem-as: run jcode as a per-account Linux user, creating it on demand.
+# Installed root-owned at /usr/local/sbin/tandem-as. The worker (user sid) may
+# only call this via a narrow sudoers rule. Usage:
+#   tandem-as <account-key> <cwd> -- jcode <args...>
+#   tandem-as <account-key> <cwd> --grant      # give this account access to one workspace
+# account-key: 1-40 chars [a-z0-9]. Linux user becomes tdu_<key>.
+#
+# Workspaces are private per directory: no group access, only ACL entries for
+# the worker and for the accounts that are members (granted by the worker when
+# a member's run is claimed). So an agent can only touch workspaces its owner
+# belongs to.
+set -euo pipefail
+key="$1"; cwd="$2"; shift 2
+[[ "$key" =~ ^[a-z0-9]{1,40}$ ]] || { echo "bad key" >&2; exit 2; }
+user="tdu_${key:0:28}"
+WS_ROOT=/srv/tandem/workspaces
+WORKER_USER=$(stat -c %U "$WS_ROOT")
+case "$cwd" in
+  "$WS_ROOT"/*) ;;
+  *) echo "cwd must be inside $WS_ROOT" >&2; exit 2 ;;
+esac
+cwd_real=$(realpath -e "$cwd")
+[[ "$cwd_real" == "$WS_ROOT"/* ]] || { echo "cwd escapes root" >&2; exit 2; }
+# The top-level workspace dir this cwd belongs to.
+rel="${cwd_real#"$WS_ROOT"/}"
+top="$WS_ROOT/${rel%%/*}"
+[ "$(stat -c %U "$top")" = "$WORKER_USER" ] || { echo "workspace not owned by worker" >&2; exit 2; }
+
+if ! id -u "$user" >/dev/null 2>&1; then
+  useradd --system --create-home --home-dir "/srv/tandem/homes/$user" \
+    --shell /usr/sbin/nologin --gid tandem "$user"
+  chmod 700 "/srv/tandem/homes/$user"
+fi
+home="/srv/tandem/homes/$user"
+install -d -m 700 -o "$user" -g tandem "$home/tmp"
+
+# Lock the workspace to its ACL list (idempotent): no group/other access.
+lock() {
+  chmod 2770 "$top"
+  setfacl -m g::---,o::---,u:"$WORKER_USER":rwx,m::rwx "$top"
+  setfacl -d -m g::---,o::---,u:"$WORKER_USER":rwx,m::rwx "$top"
+}
+
+if [ "${1:-}" = "--grant" ]; then
+  lock
+  setfacl -R -m u:"$user":rwX "$top"
+  setfacl -R -d -m u:"$user":rwX "$top"
+  exit 0
+fi
+
+[ "${1:-}" = "--" ] && shift
+[ "${1:-}" = "jcode" ] || { echo "only jcode allowed" >&2; exit 2; }
+shift
+
+exec setpriv --reuid="$user" --regid=tandem --init-groups --inh-caps=-all \
+  env -i HOME="$home" JCODE_HOME="$home/.jcode" USER="$user" LOGNAME="$user" \
+  PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 JCODE_NO_TELEMETRY=1 \
+  TERM=dumb TMPDIR="$home/tmp" \
+  bash -c 'umask 007; cd "$0" && exec /usr/local/bin/jcode "$@"' "$cwd_real" "$@"

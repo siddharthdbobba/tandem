@@ -1,5 +1,6 @@
-// Tandem worker: runs on the VM. Watches Convex for queued prompts, runs the
-// Codex agent in the workspace directory, streams output back, and keeps the
+// Tandem worker: runs on the VM. Watches Convex for queued prompts, runs a
+// Jcode agent in the workspace directory as the prompter's own sandboxed Linux
+// user (so it bills their subscription), streams output back, and keeps the
 // directory and the Convex file mirror in sync both ways.
 import { ConvexClient } from "convex/browser";
 import { anyApi } from "convex/server";
@@ -10,7 +11,7 @@ import path from "node:path";
 const api = anyApi;
 const URL = process.env.CONVEX_URL ?? "http://127.0.0.1:3310";
 const SECRET = process.env.WORKER_SECRET;
-const ROOT = process.env.WORKSPACES_DIR ?? path.join(process.env.HOME, "tandem-workspaces");
+const ROOT = process.env.WORKSPACES_DIR ?? "/srv/tandem/workspaces";
 const MAX_FILE = 400_000;
 const SKIP_DIRS = new Set([".git", "node_modules", ".venv", "__pycache__", "dist", ".next"]);
 
@@ -102,7 +103,7 @@ async function safeSync(workspaceId) {
 // Poll every workspace dir. Cheap at toy scale, catches edits made by
 // commands as well as by the agent's file tool.
 setInterval(() => {
-  for (const id of fs.readdirSync(ROOT)) safeSync(id);
+  for (const id of fs.readdirSync(ROOT)) if (!id.startsWith(".")) safeSync(id);
 }, 2000);
 
 // ---------- file sync: Convex -> disk ----------
@@ -119,18 +120,23 @@ client.onUpdate(api.worker.pendingWrites, s, async (files) => {
   }
 });
 
-// ---------- agent runs ----------
+// ---------- agent runs (Jcode, as the prompter's sandbox user) ----------
 
 const clip = (t, n = 4000) => (t.length > n ? t.slice(0, n) + `\n... (${t.length - n} more chars)` : t);
 
-function codexArgs(threadId, prompt) {
-  const common = ["--json", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox"];
-  return threadId
-    ? ["exec", "resume", ...common, threadId, prompt]
-    : ["exec", ...common, prompt];
+// Every agent and login runs through the root launcher as the account's own
+// Linux user, with HOME/JCODE_HOME in that user's private directory. That is
+// what keeps one person's subscription tokens away from everyone else.
+const SANDBOX = process.env.TANDEM_AS ?? "/usr/local/sbin/tandem-as";
+function jcodeAs(sandboxKey, cwd, args) {
+  return spawn("sudo", ["-n", SANDBOX, sandboxKey, cwd, "--", "jcode", ...args], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
 }
 
-async function runOne(run, threadId) {
+const AUTH_ERR = /no usable provider|not configured|re-authenticate|unauthori[sz]ed|invalid.*token|401/i;
+
+async function runOne(run, job) {
   const dir = dirFor(run.workspaceId);
   const prompt =
     `[Tandem shared workspace. Prompt from ${run.author}. Other people and agents may be ` +
@@ -139,11 +145,18 @@ async function runOne(run, threadId) {
   const emit = (kind, text) =>
     client.mutation(api.worker.appendEvent, { ...s, runId: run._id, kind, text }).catch(() => {});
 
-  log("run", run._id, "pane", run.paneId, threadId ? "(resume)" : "(new)");
-  const child = spawn("codex", codexArgs(threadId, prompt), {
-    cwd: dir,
-    stdio: ["ignore", "pipe", "pipe"],
+  const args = ["run", "--ndjson", "--no-update", "--quiet", "-p", job.provider];
+  if (job.model) args.push("-m", job.model);
+  if (job.sessionId) args.push("--resume", job.sessionId);
+  args.push(prompt);
+
+  log("run", run._id, "as", job.sandboxKey, job.provider, job.sessionId ? "(resume)" : "(new)");
+  // Give this member's sandbox user access to this one workspace (idempotent).
+  await new Promise((res) => {
+    const g = spawn("sudo", ["-n", SANDBOX, job.sandboxKey, dir, "--grant"], { stdio: "ignore" });
+    g.on("close", res);
   });
+  const child = jcodeAs(job.sandboxKey, dir, args);
   active.set(run._id, child);
 
   // Stop the agent if anyone hits cancel.
@@ -151,7 +164,14 @@ async function runOne(run, threadId) {
     if (st === "cancelled") child.kill("SIGTERM");
   });
 
-  let newThread = null;
+  let sessionId = null;
+  let text = "";
+  let failed = null;
+  const tools = new Map(); // tool id -> { name, input }
+  const flushText = () => {
+    if (text.trim()) emit("message", text.trim());
+    text = "";
+  };
   let buf = "";
   let stderr = "";
   child.stdout.on("data", (chunk) => {
@@ -166,38 +186,141 @@ async function runOne(run, threadId) {
       } catch {
         continue;
       }
-      if (ev.type === "thread.started") newThread = ev.thread_id;
-      const it = ev.item;
-      if (ev.type === "item.completed" && it) {
-        if (it.type === "agent_message") emit("message", it.text);
-        else if (it.type === "command_execution")
-          emit("command", `$ ${it.command}\n${clip(it.aggregated_output ?? "")}`);
-        else if (it.type === "file_change" && it.status === "completed")
-          emit(
-            "file",
-            it.changes.map((c) => `${c.kind} ${path.relative(dir, c.path) || c.path}`).join("\n"),
-          );
-        if (it.type !== "agent_message") safeSync(run.workspaceId);
+      switch (ev.type) {
+        case "start":
+          sessionId = ev.session_id ?? sessionId;
+          break;
+        case "text_delta":
+          text += ev.text ?? "";
+          break;
+        case "tool_start":
+          flushText();
+          tools.set(ev.id, { name: ev.name, input: "" });
+          break;
+        case "tool_input": {
+          const t = [...tools.values()].at(-1);
+          if (t) t.input += ev.delta ?? "";
+          break;
+        }
+        case "tool_done": {
+          const t = tools.get(ev.id) ?? { name: ev.name, input: "" };
+          let input = {};
+          try { input = JSON.parse(t.input || "{}"); } catch {}
+          const out = ev.error ? `error: ${ev.error}` : (ev.output ?? "");
+          if (t.name === "bash") emit("command", `$ ${input.command ?? ""}\n${clip(out)}`);
+          else if (["write", "edit", "apply_patch", "multiedit"].includes(t.name))
+            emit("file", `${t.name} ${input.file_path ? path.relative(dir, input.file_path) || input.file_path : ""}`.trim());
+          else emit("command", `${t.name}${input.file_path ? " " + input.file_path : ""}${ev.error ? "\n" + clip(out, 800) : ""}`);
+          if (t.name !== "read") safeSync(run.workspaceId);
+          break;
+        }
+        case "message_end":
+          flushText();
+          break;
+        case "done":
+          flushText();
+          sessionId = ev.session_id ?? sessionId;
+          break;
+        case "error":
+          failed = ev.message ?? JSON.stringify(ev);
+          emit("error", failed);
+          break;
       }
-      if (ev.type === "error" || ev.type === "turn.failed")
-        emit("error", ev.message ?? ev.error?.message ?? JSON.stringify(ev));
     }
   });
   child.stderr.on("data", (c) => (stderr = (stderr + c).slice(-2000)));
 
   const code = await new Promise((res) => child.on("close", res));
   unsub();
+  flushText();
   active.delete(run._id);
-  if (code !== 0 && !child.killed) await emit("error", `agent exited ${code}\n${stderr}`);
+  if (code !== 0 && !child.killed && !failed) await emit("error", `agent exited ${code}\n${stderr.trim()}`);
+  const why = failed ?? stderr;
+  if (code !== 0 && AUTH_ERR.test(why)) {
+    await emit("error", `${run.author}'s ${job.provider} subscription isn't connected or has expired. Connect it in Settings.`);
+    await client.mutation(api.worker.setConnection, {
+      ...s, sandboxKey: job.sandboxKey, provider: job.provider, status: "error", detail: clip(why, 280),
+    }).catch(() => {});
+  }
   await safeSync(run.workspaceId);
   await client.mutation(api.worker.finish, {
     ...s,
     runId: run._id,
     status: code === 0 ? "done" : "error",
-    threadId: newThread ?? threadId ?? undefined,
+    sessionId: sessionId ?? undefined,
   });
   log("finished", run._id, code);
 }
+
+// ---------- subscription logins ----------
+
+// Run a short jcode command in the user's sandbox and parse its last JSON line.
+function jcodeJson(sandboxKey, args, timeoutMs = 60_000) {
+  return new Promise((resolve) => {
+    const child = jcodeAs(sandboxKey, LOGIN_CWD, args);
+    let out = "";
+    let err = "";
+    const t = setTimeout(() => child.kill("SIGTERM"), timeoutMs);
+    child.stdout.on("data", (c) => (out += c));
+    child.stderr.on("data", (c) => (err += c));
+    child.on("close", (code) => {
+      clearTimeout(t);
+      const lines = out.trim().split("\n").reverse();
+      let json = null;
+      for (const l of lines) {
+        try { json = JSON.parse(l); break; } catch {}
+      }
+      resolve({ code, json, err: err.trim() });
+    });
+  });
+}
+const LOGIN_CWD = path.join(ROOT, ".login");
+fs.mkdirSync(LOGIN_CWD, { recursive: true });
+
+const loginBusy = new Set();
+async function handleLogin(f) {
+  if (loginBusy.has(f._id)) return;
+  loginBusy.add(f._id);
+  const flowId = `f${String(f._id).replace(/[^A-Za-z0-9]/g, "").slice(0, 60)}`;
+  try {
+    if (f.status === "starting") {
+      const r = await jcodeJson(f.sandboxKey, [
+        "login", f.provider, "--print-auth-url", "--json", "--flow-id", flowId, "--no-update", "--no-browser",
+      ]);
+      if (r.json?.auth_url) {
+        await client.mutation(api.worker.loginUpdate, {
+          ...s, flowId: f._id, from: "starting", status: "awaiting_code",
+          authUrl: r.json.auth_url, inputKind: r.json.input_kind ?? "auth_code_or_callback_url",
+        });
+        log("login url ready", f.provider, f.sandboxKey);
+      } else {
+        await client.mutation(api.worker.loginUpdate, {
+          ...s, flowId: f._id, from: "starting", status: "error", error: r.json?.error ?? (r.err || "could not start login"),
+        });
+      }
+    } else if (f.status === "submitting") {
+      const code = f.code ?? "";
+      const asUrl = /^https?:\/\//.test(code) || code.startsWith("?") || code.includes("code=");
+      const r = await jcodeJson(f.sandboxKey, [
+        "login", f.provider, "--json", "--flow-id", flowId, "--no-update",
+        asUrl ? "--callback-url" : "--auth-code", code,
+      ], 90_000);
+      const ok = r.code === 0 && !(r.json && /error|failed/i.test(String(r.json.status ?? "")));
+      await client.mutation(api.worker.loginUpdate, {
+        ...s, flowId: f._id, from: "submitting", status: ok ? "done" : "error",
+        error: ok ? undefined : (r.json?.error ?? r.json?.message ?? r.err ?? "login failed").toString(),
+      });
+      log("login finished", f.provider, f.sandboxKey, ok ? "ok" : "failed");
+    }
+  } catch (e) {
+    log("login error", e.message);
+  } finally {
+    loginBusy.delete(f._id);
+  }
+}
+client.onUpdate(api.worker.loginQueue, s, (flows) => {
+  for (const f of flows) handleLogin(f);
+});
 
 const stale = await client.mutation(api.worker.failStale, s);
 if (stale) log("marked", stale, "stale runs as error");
@@ -216,7 +339,7 @@ async function dispatch(runs) {
       const claimed = await client.mutation(api.worker.claim, { ...s, runId: run._id }).catch(() => null);
       if (!claimed) continue;
       active.set(run._id, null); // reserve the slot before spawning
-      runOne(claimed.run, claimed.threadId)
+      runOne(claimed.run, claimed)
         .catch((e) => log("run error", e))
         .finally(() => {
           active.delete(run._id);

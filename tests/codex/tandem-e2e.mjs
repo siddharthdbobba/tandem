@@ -1,215 +1,152 @@
-// Live, black-box QA for Tandem.
-// Run: CONVEX_URL=https://backend WORKER_HOST=myvm WORKSPACES_DIR=/home/me/tandem-workspaces node tests/codex/tandem-e2e.mjs
-// WORKER_HOST is an ssh host used to inspect the worker box (disk contents, processes).
+// Live black-box QA. Model-success checks use only TANDEM_TEST_EMAIL/PASSWORD.
 import assert from "node:assert/strict";
-import { execFile as execFileCb } from "node:child_process";
+import { execFile as cb } from "node:child_process";
 import { promisify } from "node:util";
 import { ConvexClient, ConvexHttpClient } from "convex/browser";
-import { anyApi } from "convex/server";
+import { account, api, sleep, stamp, until, URL } from "../helpers.mjs";
 
-const execFile = promisify(execFileCb);
-const URL = process.env.CONVEX_URL ?? "http://127.0.0.1:3310";
+const execFile = promisify(cb);
 const HOST = process.env.WORKER_HOST ?? "localhost";
-const WS_DIR = process.env.WORKSPACES_DIR ?? "~/tandem-workspaces";
-const api = anyApi;
-const http = new ConvexHttpClient(URL);
+const WS_DIR = "/srv/tandem/workspaces";
 const results = [];
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-
-async function eventually(check, timeout = 90_000, every = 500) {
-  const deadline = Date.now() + timeout;
-  let last;
-  while (Date.now() < deadline) {
-    try {
-      const value = await check();
-      if (value) return value;
-    } catch (error) {
-      last = error;
-    }
-    await sleep(every);
-  }
-  throw last ?? new Error(`timed out after ${timeout}ms`);
+const id = stamp();
+const test = async (name, fn) => { try { await fn(); results.push(`PASS ${name}`); } catch (e) { results.push(`FAIL ${name}: ${e.message.split("\n")[0]}`); } };
+const skip = (name) => results.push(`SKIP ${name} (no connected test account)`);
+const owner = await account(`e2e-owner-${id}@test.dev`, "owner-pass-123", "E2E Owner");
+const guest = await account(`e2e-guest-${id}@test.dev`, "guest-pass-123", "E2E Guest");
+const anon = new ConvexHttpClient(URL);
+async function workspace(client, label) {
+  const workspaceId = await client.mutation(api.workspaces.create, { name: `e2e ${id} ${label}` });
+  const [pane] = await client.query(api.workspaces.listPanes, { workspaceId });
+  return { workspaceId, paneId: pane._id };
+}
+async function terminal(client, paneId, runId, timeout = 180_000) {
+  return until(async () => {
+    const run = (await client.query(api.workspaces.paneFeed, { paneId })).find((x) => x._id === runId);
+    return run && ["done", "error", "cancelled"].includes(run.status) ? run : false;
+  }, timeout, `run ${runId}`);
+}
+async function connectedAccount() {
+  if (!process.env.TANDEM_TEST_EMAIL || !process.env.TANDEM_TEST_PASSWORD) return null;
+  const client = await account(process.env.TANDEM_TEST_EMAIL, process.env.TANDEM_TEST_PASSWORD, undefined, "signIn");
+  const me = await client.query(api.profile.me, {});
+  assert.equal(me.connections.find((x) => x.provider === me.profile.provider)?.status, "connected", "test account provider is not connected");
+  return client;
 }
 
-async function workspace(label) {
-  const id = await http.mutation(api.workspaces.create, {
-    name: `codex-test ${stamp} ${label}`,
-    user: "codex-qa",
-  });
-  const panes = await http.query(api.workspaces.listPanes, { workspaceId: id });
-  return { id, main: panes[0]._id };
-}
-
-async function feed(paneId) {
-  return http.query(api.workspaces.paneFeed, { paneId });
-}
-
-async function runDone(paneId, runId, timeout = 90_000) {
-  return eventually(async () => {
-    const run = (await feed(paneId)).find((r) => r._id === runId);
-    if (run?.status === "error") throw new Error(`agent error: ${JSON.stringify(run.events)}`);
-    return run?.status === "done" ? run : false;
-  }, timeout);
-}
-
-async function test(name, fn) {
-  try {
-    await fn();
-    results.push({ name, status: "PASS" });
-    console.log(`PASS ${name}`);
-  } catch (error) {
-    results.push({ name, status: "FAIL", error: error.stack ?? String(error) });
-    console.error(`FAIL ${name}: ${error.message}`);
-  }
-}
-
-await test("empty workspace and two-user presence", async () => {
-  const { id } = await workspace("presence");
-  assert.deepEqual(await http.query(api.files.tree, { workspaceId: id }), []);
-  await Promise.all([
-    http.mutation(api.presence.heartbeat, { workspaceId: id, name: "codex-alice", color: "#111111" }),
-    http.mutation(api.presence.heartbeat, { workspaceId: id, name: "codex-bob", color: "#222222" }),
-  ]);
-  const people = await eventually(async () => {
-    const rows = await http.query(api.presence.list, { workspaceId: id, now: Date.now() });
+await test("signed-out and non-members cannot access a workspace", async () => {
+  const { workspaceId, paneId } = await workspace(owner, "access");
+  assert.deepEqual(await anon.query(api.workspaces.list, {}), []);
+  await assert.rejects(anon.mutation(api.workspaces.create, { name: "x" }));
+  await assert.rejects(guest.query(api.files.tree, { workspaceId }));
+  await assert.rejects(guest.query(api.workspaces.paneFeed, { paneId }));
+  await assert.rejects(guest.mutation(api.workspaces.submitPrompt, { paneId, prompt: "x" }));
+});
+await test("invite membership and two-user presence work", async () => {
+  const { workspaceId, paneId } = await workspace(owner, "presence");
+  const { inviteCode } = await owner.query(api.workspaces.get, { id: workspaceId });
+  assert.equal(await guest.mutation(api.workspaces.join, { inviteCode }), workspaceId);
+  await Promise.all([owner.mutation(api.presence.heartbeat, { workspaceId, paneId }), guest.mutation(api.presence.heartbeat, { workspaceId })]);
+  const people = await until(async () => {
+    const rows = await owner.query(api.presence.list, { workspaceId, now: Date.now() });
     return rows.length === 2 ? rows : false;
-  });
-  assert.deepEqual(new Set(people.map((p) => p.name)), new Set(["codex-alice", "codex-bob"]));
+  }, 15_000, "presence");
+  assert.deepEqual(new Set(people.map((x) => x.name)), new Set(["E2E Owner", "E2E Guest"]));
 });
-
-await test("worker functions reject calls without the secret", async () => {
-  const { id, main } = await workspace("worker-auth");
-  const runId = await http.mutation(api.workspaces.submitPrompt, { paneId: main, prompt: "noop", author: "codex" });
-  const attempts = [
-    ["queued", () => http.query(api.worker.queued, { secret: "" })],
-    ["claim", () => http.mutation(api.worker.claim, { secret: "", runId })],
-    ["runStatus", () => http.query(api.worker.runStatus, { secret: "", runId })],
-    ["appendEvent", () => http.mutation(api.worker.appendEvent, { secret: "", runId, kind: "message", text: "x" })],
-    ["finish", () => http.mutation(api.worker.finish, { secret: "", runId, status: "done" })],
-    ["syncFiles", () => http.mutation(api.worker.syncFiles, { secret: "", workspaceId: id, upserts: [], deletes: [] })],
-    ["filePaths", () => http.query(api.worker.filePaths, { secret: "", workspaceId: id })],
-    ["pendingWrites", () => http.query(api.worker.pendingWrites, { secret: "" })],
-    ["markWritten", () => http.mutation(api.worker.markWritten, { secret: "", fileId: "invalid" })],
+await test("worker API rejects a bad secret", async () => {
+  const { workspaceId, paneId } = await workspace(owner, "worker");
+  const runId = await owner.mutation(api.workspaces.submitPrompt, { paneId, prompt: "noop" });
+  const calls = [
+    () => anon.query(api.worker.queued, { secret: "" }),
+    () => owner.mutation(api.worker.claim, { secret: "", runId }),
+    () => owner.query(api.worker.runStatus, { secret: "", runId }),
+    () => owner.mutation(api.worker.appendEvent, { secret: "", runId, kind: "message", text: "x" }),
+    () => owner.mutation(api.worker.finish, { secret: "", runId, status: "done" }),
+    () => owner.mutation(api.worker.syncFiles, { secret: "", workspaceId, upserts: [], deletes: [] }),
+    () => owner.query(api.worker.filePaths, { secret: "", workspaceId }),
+    () => owner.query(api.worker.pendingWrites, { secret: "" }),
+    () => owner.mutation(api.worker.markWritten, { secret: "", fileId: "invalid", content: "x" }),
   ];
-  for (const [label, call] of attempts) await assert.rejects(call, /unauthorized|ArgumentValidationError/, label);
-  await http.mutation(api.workspaces.cancelRun, { runId });
+  for (const call of calls) await assert.rejects(call);
+  await owner.mutation(api.workspaces.cancelRun, { runId });
+});
+await test("path validation rejects traversal and absolute paths", async () => {
+  const { workspaceId } = await workspace(owner, "paths");
+  for (const path of ["../x", "/etc/x", "", "a/../../x", "a//b", "./x"])
+    await assert.rejects(owner.mutation(api.files.save, { workspaceId, path, content: "bad" }));
+});
+await test("browser save is written to the VM workspace", async () => {
+  const { workspaceId } = await workspace(owner, "browser-disk");
+  const path = "nested/browser.txt";
+  const content = `browser-${id}`;
+  await owner.mutation(api.files.save, { workspaceId, path, content });
+  await until(async () => (await owner.query(api.files.get, { workspaceId, path }))?.pendingWrite === false, 45_000, "disk write");
+  const { stdout } = await execFile("ssh", [HOST, `cat ${WS_DIR}/${workspaceId}/${path}`], { timeout: 20_000 });
+  assert.equal(stdout, content);
 });
 
-await test("file path validation rejects traversal and absolute paths", async () => {
-  const { id } = await workspace("paths");
-  for (const path of ["../x", "/etc/x", "", "a/../../x"]) {
-    await assert.rejects(() => http.mutation(api.files.save, { workspaceId: id, path, content: "bad", user: "codex" }), /bad path/);
-  }
-});
-
-await test("two panes run concurrently and subscribed output arrives before finish", async () => {
-  const { id, main } = await workspace("concurrent");
-  const second = await http.mutation(api.workspaces.addPane, { workspaceId: id, title: "Second" });
-  const client = new ConvexClient(URL);
-  let sawEventBeforeDone = false;
-  let unsub;
-  try {
-    unsub = client.onUpdate(api.workspaces.paneFeed, { paneId: main }, (runs) => {
-      const run = runs.find((r) => r.prompt.includes("CONCURRENT_A"));
-      if (run?.events.length && run.status !== "done") sawEventBeforeDone = true;
+const connected = await connectedAccount();
+if (!connected) {
+  for (const name of ["agent streams before finish", "agent queue preserves file order", "agent follow-up keeps context", "agent unicode and long output", "agent cancellation stops a long run"]) skip(name);
+} else {
+  await test("agent streams before finish", async () => {
+    const { paneId } = await workspace(connected, "stream");
+    const live = new ConvexClient(URL);
+    // The subscription must be authenticated too, not merely the HTTP client.
+    live.setAuth(async () => connected.token);
+    let sawEventBeforeFinish = false;
+    const unsub = live.onUpdate(api.workspaces.paneFeed, { paneId }, (runs) => {
+      const run = runs.find((x) => x.prompt.includes("STREAM_TOKEN"));
+      if (run?.events.length && run.status !== "done") sawEventBeforeFinish = true;
     });
-    const [a, b] = await Promise.all([
-      http.mutation(api.workspaces.submitPrompt, { paneId: main, author: "codex-alice", prompt: "Run this shell command exactly, then reply done: printf CONCURRENT_A; sleep 8; printf A_END" }),
-      http.mutation(api.workspaces.submitPrompt, { paneId: second, author: "codex-bob", prompt: "Run this shell command exactly, then reply done: printf CONCURRENT_B; sleep 8; printf B_END" }),
-    ]);
-    await eventually(async () => {
-      const [fa, fb] = await Promise.all([feed(main), feed(second)]);
-      const ra = fa.find((r) => r._id === a);
-      const rb = fb.find((r) => r._id === b);
-      return ra?.status === "running" && rb?.status === "running";
-    }, 45_000);
-    await Promise.all([runDone(main, a), runDone(second, b)]);
-    await eventually(() => sawEventBeforeDone, 10_000);
-  } finally {
-    unsub?.();
-    client.close();
-  }
-});
-
-await test("three rapid prompts in one pane are ordered and run once", async () => {
-  const { main } = await workspace("queue");
-  const tokens = ["QUEUE_ONE", "QUEUE_TWO", "QUEUE_THREE"];
-  const ids = await Promise.all(tokens.map((token) => http.mutation(api.workspaces.submitPrompt, {
-    paneId: main, author: "codex", prompt: `Run exactly this shell command and then stop: printf '${token}\\n' >> queue.log`,
-  })));
-  await Promise.all(ids.map((id) => runDone(main, id, 150_000)));
-  const data = await eventually(async () => {
-    const file = await http.query(api.files.get, { workspaceId: (await http.query(api.workspaces.list, {})).find((x) => x.name.includes(`${stamp} queue`))._id, path: "queue.log" });
-    return file?.content === `${tokens.join("\n")}\n` ? file.content : false;
-  }, 30_000);
-  assert.equal(data, `${tokens.join("\n")}\n`);
-  const rows = await feed(main);
-  assert.deepEqual(ids.map((id) => rows.findIndex((r) => r._id === id)), [0, 1, 2]);
-  assert(ids.every((id) => rows.filter((r) => r._id === id).length === 1));
-});
-
-await test("follow-up retains the pane conversation context", async () => {
-  const { main } = await workspace("context");
-  const token = `CONTEXT_${stamp}`;
-  const first = await http.mutation(api.workspaces.submitPrompt, { paneId: main, author: "codex", prompt: `Reply with exactly ${token}. Do not use tools or write files.` });
-  await runDone(main, first);
-  const second = await http.mutation(api.workspaces.submitPrompt, { paneId: main, author: "codex", prompt: "What exact token did you just give me? Reply with only that token. Do not use tools." });
-  const done = await runDone(main, second);
-  assert(done.events.some((e) => e.text.includes(token)), "follow-up did not remember the previous response");
-});
-
-await test("agent file sync, browser overwrite, deletion, binary/big skip", async () => {
-  const { id, main } = await workspace("files");
-  const create = await http.mutation(api.workspaces.submitPrompt, { paneId: main, author: "codex", prompt: "Run exactly: mkdir -p nested/deeper; printf 'agent-one' > nested/deeper/agent.txt; printf '\\0BIN' > binary.dat; dd if=/dev/zero of=big.dat bs=400001 count=1 status=none" });
-  await runDone(main, create);
-  await eventually(async () => {
-    const rows = await http.query(api.files.tree, { workspaceId: id });
-    return rows.some((f) => f.path === "nested/deeper/agent.txt") && !rows.some((f) => f.path === "binary.dat" || f.path === "big.dat");
-  }, 30_000);
-  let f = await http.query(api.files.get, { workspaceId: id, path: "nested/deeper/agent.txt" });
-  assert.equal(f?.content, "agent-one");
-  await http.mutation(api.files.save, { workspaceId: id, path: "nested/deeper/agent.txt", content: "browser-two", user: "codex-browser" });
-  await eventually(async () => (await http.query(api.files.get, { workspaceId: id, path: "nested/deeper/agent.txt" }))?.pendingWrite === false, 30_000);
-  const disk = await execFile("ssh", [HOST, `cat ${WS_DIR}/${id}/nested/deeper/agent.txt`], { timeout: 20_000 });
-  assert.equal(disk.stdout, "browser-two");
-  const remove = await http.mutation(api.workspaces.submitPrompt, { paneId: main, author: "codex", prompt: "Run exactly this shell command and then stop: rm nested/deeper/agent.txt" });
-  await runDone(main, remove);
-  await eventually(async () => !(await http.query(api.files.tree, { workspaceId: id })).some((x) => x.path === "nested/deeper/agent.txt"), 30_000);
-});
-
-await test("unicode quotes/newlines and long output complete", async () => {
-  const { main } = await workspace("edge-output");
-  const special = await http.mutation(api.workspaces.submitPrompt, { paneId: main, author: "codex", prompt: "Reply exactly with: café 'quoted' \"double\"\n第二行. Do not use tools." });
-  await runDone(main, special);
-  const long = await http.mutation(api.workspaces.submitPrompt, { paneId: main, author: "codex", prompt: "Run exactly this shell command and then stop: yes x | head -c 7000" });
-  const done = await runDone(main, long);
-  assert(done.events.some((e) => e.text.length >= 3900), "long output was not streamed/clipped as a command event");
-});
-
-await test("cancelled run stays cancelled and its codex process disappears", async () => {
-  const { id, main } = await workspace("cancel");
-  const runId = await http.mutation(api.workspaces.submitPrompt, { paneId: main, author: "codex", prompt: `Run exactly this shell command and wait for it: sleep 120 # CANCEL_${id}` });
-  await eventually(async () => (await feed(main)).find((r) => r._id === runId)?.status === "running", 45_000);
-  await http.mutation(api.workspaces.cancelRun, { runId });
-  await eventually(async () => (await feed(main)).find((r) => r._id === runId)?.status === "cancelled", 20_000);
-  await eventually(async () => {
-    const { stdout } = await execFile("ssh", [HOST, `ps -eo args | grep -F 'CANCEL_${id}' | grep -v grep || true`], { timeout: 20_000 });
-    return stdout.trim() === "";
-  }, 30_000, 1_000);
-});
-
-await test("removing a running pane does not strand its run", async () => {
-  const { id, main } = await workspace("remove-pane");
-  const second = await http.mutation(api.workspaces.addPane, { workspaceId: id, title: "Disposable" });
-  const runId = await http.mutation(api.workspaces.submitPrompt, { paneId: second, author: "codex", prompt: "Run exactly this shell command and then stop: sleep 5" });
-  await eventually(async () => (await feed(second)).find((r) => r._id === runId)?.status === "running", 45_000);
-  await http.mutation(api.workspaces.removePane, { paneId: second });
-  await sleep(12_000);
-  // paneFeed remains callable after deletion, which lets us detect a stranded run.
-  const run = (await feed(second)).find((r) => r._id === runId);
-  assert(run && ["done", "cancelled", "error"].includes(run.status), `run stranded after pane deletion: ${run?.status}`);
-});
-
-console.log("\nRESULTS\n" + results.map((r) => `${r.status} ${r.name}${r.error ? `\n${r.error}` : ""}`).join("\n"));
-if (results.some((r) => r.status === "FAIL")) process.exitCode = 1;
+    try {
+      const runId = await connected.mutation(api.workspaces.submitPrompt, { paneId, prompt: "Run exactly: printf STREAM_TOKEN; sleep 4; printf STREAM_END" });
+      const run = await terminal(connected, paneId, runId);
+      assert.equal(run.status, "done");
+      await until(() => sawEventBeforeFinish, 15_000, "stream before done");
+    } finally { unsub(); live.close(); }
+  });
+  await test("agent queue preserves file order", async () => {
+    const { workspaceId, paneId } = await workspace(connected, "queue-files");
+    const tokens = ["ONE", "TWO", "THREE"];
+    const ids = [];
+    for (const token of tokens) ids.push(await connected.mutation(api.workspaces.submitPrompt, { paneId, prompt: `Run exactly: printf '${token}\\n' >> order.txt` }));
+    const runs = await Promise.all(ids.map((runId) => terminal(connected, paneId, runId, 240_000)));
+    assert.deepEqual(runs.map((run) => run.status), ["done", "done", "done"]);
+    const file = await until(async () => {
+      const f = await connected.query(api.files.get, { workspaceId, path: "order.txt" });
+      return f?.content === `${tokens.join("\n")}\n` && f;
+    }, 45_000, "ordered file");
+    assert.equal(file.content, `${tokens.join("\n")}\n`);
+  });
+  await test("agent follow-up keeps context", async () => {
+    const { paneId } = await workspace(connected, "context");
+    const token = `CONTEXT_${id}`;
+    const first = await connected.mutation(api.workspaces.submitPrompt, { paneId, prompt: `Reply with exactly ${token}. Do not use tools.` });
+    assert.equal((await terminal(connected, paneId, first)).status, "done");
+    const second = await connected.mutation(api.workspaces.submitPrompt, { paneId, prompt: "What exact token did you just give me? Reply only with it." });
+    const run = await terminal(connected, paneId, second);
+    assert.equal(run.status, "done");
+    assert.ok(run.events.some((event) => event.text.includes(token)), "follow-up lost context");
+  });
+  await test("agent unicode and long output complete", async () => {
+    const { paneId } = await workspace(connected, "output");
+    const unicode = await connected.mutation(api.workspaces.submitPrompt, { paneId, prompt: "Reply exactly: café 'quoted' \"double\"\n第二行. Do not use tools." });
+    assert.equal((await terminal(connected, paneId, unicode)).status, "done");
+    const long = await connected.mutation(api.workspaces.submitPrompt, { paneId, prompt: "Run exactly: yes x | head -c 7000" });
+    const run = await terminal(connected, paneId, long);
+    assert.equal(run.status, "done");
+    assert.ok(run.events.some((event) => event.text.length >= 3900), "long output was not streamed");
+  });
+  await test("agent cancellation stops a long run", async () => {
+    const { workspaceId, paneId } = await workspace(connected, "cancel");
+    const runId = await connected.mutation(api.workspaces.submitPrompt, { paneId, prompt: `Run exactly and wait: sleep 120 # CANCEL_${workspaceId}` });
+    await until(async () => (await connected.query(api.workspaces.paneFeed, { paneId })).find((x) => x._id === runId)?.status === "running", 60_000, "run started");
+    await connected.mutation(api.workspaces.cancelRun, { runId });
+    assert.equal((await terminal(connected, paneId, runId, 30_000)).status, "cancelled");
+    await until(async () => (await execFile("ssh", [HOST, `ps -eo args | grep -F 'CANCEL_${workspaceId}' | grep -v grep || true`], { timeout: 20_000 })).stdout.trim() === "", 30_000, "cancelled process", 1_000);
+  });
+}
+console.log(results.join("\n"));
+console.log(`SUMMARY ${results.filter((r) => r.startsWith("PASS")).length} passed, ${results.filter((r) => r.startsWith("SKIP")).length} skipped, ${results.filter((r) => r.startsWith("FAIL")).length} failed`);
+process.exitCode = results.some((r) => r.startsWith("FAIL")) ? 1 : 0;

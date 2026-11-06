@@ -1,0 +1,18 @@
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { ConvexProvider, ConvexReactClient } from "convex/react";
+import App from "./App";
+import "./style.css";
+
+// Default: the Convex backend is served from the same host on port 10000.
+const url =
+  import.meta.env.VITE_CONVEX_URL ?? `${location.protocol}//${location.hostname}:10000`;
+const convex = new ConvexReactClient(url);
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <ConvexProvider client={convex}>
+      <App />
+    </ConvexProvider>
+  </StrictMode>,
+);

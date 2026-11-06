@@ -36,7 +36,24 @@ export const addPane = mutation({
 
 export const removePane = mutation({
   args: { paneId: v.id("panes") },
-  handler: (ctx, { paneId }) => ctx.db.delete(paneId),
+  handler: async (ctx, { paneId }) => {
+    // Cancel anything in flight so the worker stops it, then drop history.
+    const runs = await ctx.db
+      .query("runs")
+      .withIndex("by_pane", (q) => q.eq("paneId", paneId))
+      .collect();
+    for (const r of runs) {
+      if (r.status === "queued" || r.status === "running") {
+        await ctx.db.patch(r._id, { status: "cancelled", finishedAt: Date.now() });
+      }
+    }
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_pane", (q) => q.eq("paneId", paneId))
+      .collect();
+    for (const e of events) await ctx.db.delete(e._id);
+    await ctx.db.delete(paneId);
+  },
 });
 
 // Everything a pane needs to render: its runs and their output, live.

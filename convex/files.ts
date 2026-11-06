@@ -39,7 +39,10 @@ export const save = mutation({
     user: v.string(),
   },
   handler: async (ctx, { workspaceId, path, content, user }) => {
-    if (path.includes("..") || path.startsWith("/")) throw new Error("bad path");
+    path = path.trim();
+    const parts = path.split("/");
+    if (!path || path.startsWith("/") || parts.some((p) => !p || p === "." || p === ".."))
+      throw new Error("bad path");
     const existing = await ctx.db
       .query("files")
       .withIndex("by_workspace_path", (q) =>

@@ -86,7 +86,30 @@ export const finish = mutation({
     if (run.status === "running") {
       await ctx.db.patch(runId, { status, finishedAt: Date.now() });
     }
-    if (threadId) await ctx.db.patch(run.paneId, { threadId });
+    if (threadId && (await ctx.db.get(run.paneId))) await ctx.db.patch(run.paneId, { threadId });
+  },
+});
+
+// Called once at worker startup: anything still "running" was owned by a
+// previous worker process that died, so it will never finish.
+export const failStale = mutation({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    check(secret);
+    const runs = await ctx.db
+      .query("runs")
+      .withIndex("by_status", (q) => q.eq("status", "running"))
+      .collect();
+    for (const r of runs) {
+      await ctx.db.patch(r._id, { status: "error", finishedAt: Date.now() });
+      await ctx.db.insert("events", {
+        runId: r._id,
+        paneId: r.paneId,
+        kind: "error",
+        text: "worker restarted while this was running",
+      });
+    }
+    return runs.length;
   },
 });
 

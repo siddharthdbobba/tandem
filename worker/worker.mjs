@@ -187,6 +187,9 @@ async function runOne(run, threadId) {
   log("finished", run._id, code);
 }
 
+const stale = await client.mutation(api.worker.failStale, s);
+if (stale) log("marked", stale, "stale runs as error");
+
 // Convex pushes the queue to us the moment anyone submits a prompt.
 client.onUpdate(api.worker.queued, s, async (runs) => {
   for (const run of runs) {

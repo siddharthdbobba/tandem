@@ -73,6 +73,20 @@ VITE_CONVEX_URL=https://your-backend npm run build   # serve dist/
 
 I run all three as systemd user services on an Oracle ARM VM, exposed over Tailscale only.
 
+## Testing
+
+Both suites run against a live deployment and drive real agent runs:
+
+```bash
+CONVEX_URL=https://your-backend node tests/smoke.mjs        # 7 checks
+node tests/codex/tandem-e2e.mjs                              # 10 adversarial checks, written by Codex
+node tests/codex/ui-smoke.mjs <workspaceId>                  # headless Chrome render check
+```
+
+They cover concurrent panes, live streaming before a run finishes, in-order queueing with no double runs, follow-up context, cancel (process actually killed), two-way file sync, path traversal, worker auth, pane deletion mid-run, and unicode/long output. `tests/codex/REPORT.md` is the QA report, including the bug it caught (deleting a running pane stranded the run), which is fixed.
+
+Crash safety: when the worker starts, it marks any run left `running` by a dead worker as errored, and a Convex cron (`convex/crons.ts`) cancels runs whose pane was deleted.
+
 ## Limits (it's a toy)
 
 - No auth beyond a display name. Keep it on a private network. The agent runs with its sandbox off, so anyone with access can run shell commands on the box.

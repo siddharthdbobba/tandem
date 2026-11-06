@@ -2,6 +2,7 @@
 // can't impersonate the worker.
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { deleteFile, findFile, readContent, writeFile } from "./lib";
 
 function check(secret: string) {
   if (!process.env.WORKER_SECRET || secret !== process.env.WORKER_SECRET) {
@@ -68,7 +69,7 @@ export const appendEvent = mutation({
     check(secret);
     const run = await ctx.db.get(runId);
     if (!run) return;
-    await ctx.db.insert("events", { runId, paneId: run.paneId, kind, text });
+    await ctx.db.insert("events", { runId, paneId: run.paneId, kind, text: text.slice(0, 20_000) });
   },
 });
 
@@ -124,32 +125,14 @@ export const syncFiles = mutation({
   handler: async (ctx, { secret, workspaceId, upserts, deletes }) => {
     check(secret);
     for (const { path, content } of upserts) {
-      const existing = await ctx.db
-        .query("files")
-        .withIndex("by_workspace_path", (q) =>
-          q.eq("workspaceId", workspaceId).eq("path", path),
-        )
-        .unique();
-      if (!existing) {
-        await ctx.db.insert("files", {
-          workspaceId,
-          path,
-          content,
-          updatedBy: "agent",
-          pendingWrite: false,
-        });
-      } else if (!existing.pendingWrite && existing.content !== content) {
-        await ctx.db.patch(existing._id, { content, updatedBy: "agent" });
-      }
+      const existing = await findFile(ctx, workspaceId, path);
+      if (existing?.pendingWrite) continue; // human edit wins until it hits disk
+      if (existing && (await readContent(ctx, existing._id)) === content) continue;
+      await writeFile(ctx, workspaceId, path, content, "agent", false);
     }
     for (const path of deletes) {
-      const existing = await ctx.db
-        .query("files")
-        .withIndex("by_workspace_path", (q) =>
-          q.eq("workspaceId", workspaceId).eq("path", path),
-        )
-        .unique();
-      if (existing && !existing.pendingWrite) await ctx.db.delete(existing._id);
+      const existing = await findFile(ctx, workspaceId, path);
+      if (existing && !existing.pendingWrite) await deleteFile(ctx, existing._id);
     }
   },
 });
@@ -166,15 +149,18 @@ export const filePaths = query({
   },
 });
 
-// Convex -> disk.
+// Convex -> disk. Returns pending files with their content.
 export const pendingWrites = query({
   args: { secret: v.string() },
   handler: async (ctx, { secret }) => {
     check(secret);
-    return ctx.db
+    const files = await ctx.db
       .query("files")
       .withIndex("by_pending", (q) => q.eq("pendingWrite", true))
-      .collect();
+      .take(20);
+    return Promise.all(
+      files.map(async (f) => ({ ...f, content: await readContent(ctx, f._id) })),
+    );
   },
 });
 
@@ -184,6 +170,8 @@ export const markWritten = mutation({
     check(secret);
     const f = await ctx.db.get(fileId);
     // Only clear if nobody edited again since we wrote it.
-    if (f && f.content === content) await ctx.db.patch(fileId, { pendingWrite: false });
+    if (f && (await readContent(ctx, fileId)) === content) {
+      await ctx.db.patch(fileId, { pendingWrite: false });
+    }
   },
 });

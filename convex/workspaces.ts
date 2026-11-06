@@ -56,17 +56,24 @@ export const removePane = mutation({
   },
 });
 
-// Everything a pane needs to render: its runs and their output, live.
+// Everything a pane needs to render: its latest runs and their output, live.
+// Bounded so long-lived panes stay within Convex read limits.
 export const paneFeed = query({
   args: { paneId: v.id("panes") },
   handler: async (ctx, { paneId }) => {
-    const runs = await ctx.db
-      .query("runs")
-      .withIndex("by_pane", (q) => q.eq("paneId", paneId))
-      .collect();
+    const runs = (
+      await ctx.db
+        .query("runs")
+        .withIndex("by_pane", (q) => q.eq("paneId", paneId))
+        .order("desc")
+        .take(30)
+    ).reverse();
+    if (!runs.length) return [];
     const events = await ctx.db
       .query("events")
-      .withIndex("by_pane", (q) => q.eq("paneId", paneId))
+      .withIndex("by_pane", (q) =>
+        q.eq("paneId", paneId).gte("_creationTime", runs[0]._creationTime),
+      )
       .collect();
     return runs.map((r) => ({
       ...r,
@@ -80,6 +87,8 @@ export const submitPrompt = mutation({
   handler: async (ctx, { paneId, prompt, author }) => {
     const pane = await ctx.db.get(paneId);
     if (!pane) throw new Error("pane not found");
+    prompt = prompt.trim();
+    if (!prompt || prompt.length > 100_000) throw new Error("prompt must be 1 to 100k chars");
     return ctx.db.insert("runs", {
       workspaceId: pane.workspaceId,
       paneId,

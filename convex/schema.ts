@@ -47,16 +47,23 @@ export default defineSchema({
     text: v.string(),
   }).index("by_pane", ["paneId"]),
 
-  // Mirror of the workspace directory on the VM.
+  // Mirror of the workspace directory on the VM. Metadata only, so the file
+  // tree query stays small no matter how big the files are.
   files: defineTable({
     workspaceId: v.id("workspaces"),
     path: v.string(),
-    content: v.string(),
+    size: v.number(),
     updatedBy: v.string(),
     pendingWrite: v.boolean(), // edited in browser, worker must write to disk
   })
     .index("by_workspace_path", ["workspaceId", "path"])
     .index("by_pending", ["pendingWrite"]),
+
+  // File contents, one row per file, read only when a file is opened.
+  contents: defineTable({
+    fileId: v.id("files"),
+    content: v.string(),
+  }).index("by_file", ["fileId"]),
 
   // Who is here right now.
   presence: defineTable({

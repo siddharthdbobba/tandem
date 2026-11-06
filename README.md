@@ -75,17 +75,24 @@ I run all three as systemd user services on an Oracle ARM VM, exposed over Tails
 
 ## Testing
 
-Both suites run against a live deployment and drive real agent runs:
+All suites run against a live deployment and drive real agent runs:
 
 ```bash
-CONVEX_URL=https://your-backend node tests/smoke.mjs        # 7 checks
-node tests/codex/tandem-e2e.mjs                              # 10 adversarial checks, written by Codex
-node tests/codex/ui-smoke.mjs <workspaceId>                  # headless Chrome render check
+export CONVEX_URL=https://your-backend UI_URL=https://your-ui WORKER_HOST=your-vm WORKSPACES_DIR=/home/you/tandem-workspaces
+node tests/smoke.mjs                  # 7 API checks
+node tests/codex/tandem-e2e.mjs       # 10 adversarial checks, written by Codex
+node tests/multiplayer-ui.mjs         # 6 checks with two real headless browsers
+node tests/load.mjs                   # 16 runs across 8 workspaces at once
+node tests/codex/ui-smoke.mjs <workspaceId> [screenshot.png]
 ```
 
-They cover concurrent panes, live streaming before a run finishes, in-order queueing with no double runs, follow-up context, cancel (process actually killed), two-way file sync, path traversal, worker auth, pane deletion mid-run, and unicode/long output. `tests/codex/REPORT.md` is the QA report, including the bug it caught (deleting a running pane stranded the run), which is fixed.
+Coverage: concurrent panes, streaming before a run finishes, in-order queueing with no double runs, follow-up context, cancel (process actually killed), two-way file sync, path traversal, worker auth, pane deletion mid-run, unicode/long output, presence, live cross-browser editing (an unsaved draft is never clobbered), and a burst load that holds the concurrency cap. `tests/codex/REPORT.md` is the Codex QA report, including the bug it caught (deleting a running pane stranded the run), which is fixed.
 
-Crash safety: when the worker starts, it marks any run left `running` by a dead worker as errored, and a Convex cron (`convex/crons.ts`) cancels runs whose pane was deleted.
+Robustness:
+- The worker runs at most `MAX_ACTIVE` agents (default 4). Extra prompts wait in the queue.
+- When the worker starts, it marks runs left `running` by a dead worker as errored. A Convex cron (`convex/crons.ts`) cancels runs whose pane was deleted.
+- File contents live in their own table, so the file tree query reads metadata only (a 14 MB workspace was pushing the 16 MB per-query read limit before this split). Pane feeds show the latest 30 runs.
+- The worker reconnects on its own when the Convex backend restarts.
 
 ## Limits (it's a toy)
 

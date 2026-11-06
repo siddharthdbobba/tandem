@@ -61,17 +61,28 @@ async function syncWorkspace(workspaceId) {
   const upserts = [];
   for (const [p, c] of now) if (prev.get(p) !== c) upserts.push({ path: p, content: c });
   const deletes = [...prev.keys()].filter((p) => !now.has(p));
-  snapshots.set(workspaceId, now);
-  for (let i = 0; i < Math.max(upserts.length, 1); i += 25) {
-    const batch = upserts.slice(i, i + 25);
-    if (!batch.length && !deletes.length) break;
+  // Batch by size so one mutation never carries more than ~2 MB.
+  const batches = [[]];
+  let bytes = 0;
+  for (const u of upserts) {
+    if (bytes + u.content.length > 2_000_000 && batches.at(-1).length) {
+      batches.push([]);
+      bytes = 0;
+    }
+    batches.at(-1).push(u);
+    bytes += u.content.length;
+  }
+  for (let i = 0; i < batches.length; i++) {
+    if (!batches[i].length && !deletes.length) break;
     await client.mutation(api.worker.syncFiles, {
       ...s,
       workspaceId,
-      upserts: batch,
+      upserts: batches[i],
       deletes: i === 0 ? deletes : [],
     });
   }
+  // Only advance after Convex has everything, so a failed push is retried.
+  snapshots.set(workspaceId, now);
 }
 
 const syncing = new Set();
@@ -81,6 +92,7 @@ async function safeSync(workspaceId) {
   try {
     await syncWorkspace(workspaceId);
   } catch (e) {
+    snapshots.delete(workspaceId); // re-diff against Convex next time
     log("sync error", workspaceId, e.message);
   } finally {
     syncing.delete(workspaceId);
@@ -190,24 +202,37 @@ async function runOne(run, threadId) {
 const stale = await client.mutation(api.worker.failStale, s);
 if (stale) log("marked", stale, "stale runs as error");
 
-// Convex pushes the queue to us the moment anyone submits a prompt.
-client.onUpdate(api.worker.queued, s, async (runs) => {
-  for (const run of runs) {
-    if (active.has(run._id)) continue;
-    const claimed = await client.mutation(api.worker.claim, { ...s, runId: run._id });
-    if (claimed) runOne(claimed.run, claimed.threadId).catch((e) => log("run error", e));
+// Cap parallel agents so a burst of prompts can't swamp a small VM. Extra
+// runs just stay queued until a slot frees up.
+const MAX_ACTIVE = Number(process.env.MAX_ACTIVE ?? 4);
+let dispatching = false;
+async function dispatch(runs) {
+  if (dispatching) return;
+  dispatching = true;
+  try {
+    for (const run of runs) {
+      if (active.size >= MAX_ACTIVE) break;
+      if (active.has(run._id)) continue;
+      const claimed = await client.mutation(api.worker.claim, { ...s, runId: run._id }).catch(() => null);
+      if (!claimed) continue;
+      active.set(run._id, null); // reserve the slot before spawning
+      runOne(claimed.run, claimed.threadId)
+        .catch((e) => log("run error", e))
+        .finally(() => {
+          active.delete(run._id);
+          poll();
+        });
+    }
+  } finally {
+    dispatching = false;
   }
-});
+}
+const poll = () => client.query(api.worker.queued, s).then(dispatch).catch(() => {});
 
-// When a run finishes, other queued runs on the same pane become claimable.
-// Re-check the queue on an interval as a simple safety net.
-setInterval(async () => {
-  const runs = await client.query(api.worker.queued, s).catch(() => []);
-  for (const run of runs) {
-    if (active.has(run._id)) continue;
-    const claimed = await client.mutation(api.worker.claim, { ...s, runId: run._id }).catch(() => null);
-    if (claimed) runOne(claimed.run, claimed.threadId).catch((e) => log("run error", e));
-  }
-}, 3000);
+// Convex pushes the queue to us the moment anyone submits a prompt.
+client.onUpdate(api.worker.queued, s, dispatch);
+
+// Safety net in case a push is dropped while we were busy dispatching.
+setInterval(poll, 3000);
 
 log("tandem worker up", URL, ROOT);

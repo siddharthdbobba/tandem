@@ -1,7 +1,8 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { findFile, readContent, writeFile } from "./lib";
 
-// File tree without contents, so the sidebar stays light.
+// File tree. Reads metadata only, so it stays cheap however big files get.
 export const tree = query({
   args: { workspaceId: v.id("workspaces") },
   handler: async (ctx, { workspaceId }) => {
@@ -13,21 +14,18 @@ export const tree = query({
       _id: f._id,
       path: f.path,
       updatedBy: f.updatedBy,
-      updatedAt: f._creationTime,
-      size: f.content.length,
+      size: f.size,
     }));
   },
 });
 
 export const get = query({
   args: { workspaceId: v.id("workspaces"), path: v.string() },
-  handler: (ctx, { workspaceId, path }) =>
-    ctx.db
-      .query("files")
-      .withIndex("by_workspace_path", (q) =>
-        q.eq("workspaceId", workspaceId).eq("path", path),
-      )
-      .unique(),
+  handler: async (ctx, { workspaceId, path }) => {
+    const file = await findFile(ctx, workspaceId, path);
+    if (!file) return null;
+    return { ...file, content: await readContent(ctx, file._id) };
+  },
 });
 
 // Human edit from the browser. The worker writes it to disk.
@@ -43,22 +41,7 @@ export const save = mutation({
     const parts = path.split("/");
     if (!path || path.startsWith("/") || parts.some((p) => !p || p === "." || p === ".."))
       throw new Error("bad path");
-    const existing = await ctx.db
-      .query("files")
-      .withIndex("by_workspace_path", (q) =>
-        q.eq("workspaceId", workspaceId).eq("path", path),
-      )
-      .unique();
-    if (existing) {
-      await ctx.db.patch(existing._id, { content, updatedBy: user, pendingWrite: true });
-    } else {
-      await ctx.db.insert("files", {
-        workspaceId,
-        path,
-        content,
-        updatedBy: user,
-        pendingWrite: true,
-      });
-    }
+    if (content.length > 400_000) throw new Error("file too large");
+    await writeFile(ctx, workspaceId, path, content, user, true);
   },
 });

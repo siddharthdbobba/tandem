@@ -69,7 +69,7 @@ await alice.mutation(api.files.save, { workspaceId: wsId, path: "shared.md", con
 
 // Real sign-in through the UI form, then open the invite link.
 async function signInUI(b, [email, password]) {
-  await b.send("Page.navigate", { url: `${UI}/` });
+  await b.send("Page.navigate", { url: `${UI}/#/signin` });
   await until(async () => (await b.js("!!document.querySelector('input[name=email]')")), 15000, "sign-in form");
   await b.js(`(() => {
     const set = (sel, v) => { const el = document.querySelector(sel); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); };
@@ -122,11 +122,11 @@ try {
     await A.js(typeInto("document.querySelector('.prompt-box textarea')", "Reply with exactly: hello-from-ui"));
     await A.js("document.querySelector('.prompt-box').requestSubmit(), true");
     await until(async () => (await B.js("document.querySelector('.feed').innerText")).includes("hello-from-ui"), 15000, "bob sees prompt");
-    await until(async () => (await B.js("document.querySelector('.feed').innerText")).includes("alice's claude"), 30000, "bob sees billing tag");
-    await until(async () => (await A.js("document.querySelector('.feed').innerText")).includes("your claude"), 5000, "alice sees 'your'");
+    await until(async () => /alice's claude/i.test(await B.js("document.querySelector('.feed').innerText")), 30000, "bob sees billing tag");
+    await until(async () => /your claude/i.test(await A.js("document.querySelector('.feed').innerText")), 5000, "alice sees 'your'");
     // No subscription connected in this test: both see the clear explanation.
     await until(async () => /subscription isn't connected/.test(await B.js("document.querySelector('.feed').innerText")), 60000, "bob sees error");
-    assert.match(await A.js("document.body.innerText"), /Connect your AI subscription/);
+    assert.match(await A.js("document.body.innerText"), /Connect your AI subscription/i);
   });
 
   await test("new pane added by bob appears for alice", async () => {
@@ -135,23 +135,23 @@ try {
     await until(async () => (await A.js("document.querySelectorAll('.pane').length")) === before + 1, 10000, "alice sees pane");
   });
 
-  await test("sign-up page asks for an invite, rejects a bad one, prefills from a workspace link", async () => {
+  await test("landing page leads to open sign-up; a join link signs up and lands in the workspace", async () => {
     const C = await browser("carl", 9343);
     try {
       await C.send("Page.navigate", { url: `${UI}/` });
-      await until(async () => (await C.js("!!document.querySelector('form.stack')")), 15000, "form");
-      await C.js("[...document.querySelectorAll('button.ghost')].find(b=>b.textContent.includes('Create an account')).click(), true");
-      await until(async () => (await C.js("!!document.querySelector('input[name=invite]')")), 5000, "invite field");
+      await until(async () => /Code with agents, together/.test(await C.js("document.body.innerText")), 15000, "landing");
+      assert.ok(await C.js("!!document.querySelector('a[href=\"#/signup\"]')"), "landing has a sign-up CTA");
+      // Invite link -> sign-up form (no invite code field), then straight into the workspace.
+      await C.send("Page.navigate", { url: `${UI}/#/join/${inviteCode}` });
+      await until(async () => await C.js("!!document.querySelector('input[name=name]')"), 15000, "sign-up form");
+      assert.equal(await C.js("!!document.querySelector('input[name=invite]')"), false);
+      assert.match(await C.js("document.body.innerText"), /invited to a workspace/);
       await C.js(`(() => {
         const set = (sel, v) => { const el = document.querySelector(sel); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); };
-        set('input[name=name]', 'Carl'); set('input[name=invite]', 'notarealcode'); set('input[name=email]', 'carl-${id}@test.dev'); set('input[name=password]', 'carl-pass-123');
+        set('input[name=name]', 'Carl'); set('input[name=email]', 'carl-${id}@test.dev'); set('input[name=password]', 'carl-pass-123');
         document.querySelector('form.stack').requestSubmit(); return true; })()`);
-      await until(async () => /invite code isn't valid/.test(await C.js("document.body.innerText")), 15000, "invite error");
-      // Workspace invite link: sign-up opens with the code filled in.
-      await C.send("Page.navigate", { url: `${UI}/#/join/${inviteCode}` });
-      await sleep(500);
-      await C.send("Page.reload");
-      await until(async () => (await C.js("document.querySelector('input[name=invite]')?.value")) === inviteCode, 15000, "prefilled invite");
+      await until(async () => (await C.js("location.hash")) === `#/w/${wsId}`, 20000, "lands in workspace");
+      await until(async () => (await C.js("document.querySelector('.ws-name')?.textContent")) === "multiplayer-ui", 10000, "workspace name");
     } finally {
       C.ws.close(); C.proc.kill("SIGTERM");
     }

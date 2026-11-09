@@ -1,0 +1,82 @@
+/* Hallmark · tokens · theme: Cobalt (modern-minimal) */
+:root {
+  /* paper: cool engineered near-white, never #fff */
+  --color-paper: oklch(98.5% 0.004 250);
+  --color-paper-2: oklch(96.6% 0.006 250);
+  --color-paper-3: oklch(94% 0.008 252);
+  --color-ink: oklch(24% 0.02 258);
+  --color-ink-2: oklch(34% 0.018 257);
+  --color-muted: oklch(52% 0.016 256);
+  --color-rule: oklch(91.5% 0.008 254);
+  --color-rule-2: oklch(85% 0.01 254);
+
+  /* the one signal */
+  --color-accent: oklch(58% 0.2 256);
+  --color-accent-hover: oklch(52% 0.2 256);
+  --color-accent-ink: oklch(99% 0.003 250);
+  --color-accent-soft: oklch(95.5% 0.025 256);
+  --color-focus: oklch(58% 0.2 256);
+
+  /* the one dark band + code surfaces */
+  --color-graphite: oklch(22% 0.016 260);
+  --color-graphite-2: oklch(26.5% 0.016 260);
+  --color-graphite-rule: oklch(34% 0.016 260);
+  --color-on-graphite: oklch(93% 0.006 250);
+  --color-on-graphite-muted: oklch(70% 0.012 255);
+  --color-code-key: oklch(74% 0.13 256);
+
+  /* states */
+  --color-ok: oklch(60% 0.13 155);
+  --color-ok-soft: oklch(95.5% 0.03 155);
+  --color-ok-ink: oklch(40% 0.1 155);
+  --color-danger: oklch(57% 0.19 25);
+  --color-danger-soft: oklch(96.5% 0.022 25);
+  --color-danger-ink: oklch(45% 0.15 25);
+  --color-warn-soft: oklch(96.5% 0.04 85);
+  --color-warn-ink: oklch(44% 0.1 70);
+
+  /* illustration-only presence colours (landing mock) */
+  --color-person-a: oklch(66% 0.15 40);
+  --color-person-b: oklch(62% 0.12 160);
+
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: clamp(1.75rem, 2.2vw + 1rem, 2.5rem);
+  --text-display: clamp(2.5rem, 4.6vw + 0.6rem, 4.5rem);
+
+  --space-2xs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --space-3xl: 80px;
+  --space-4xl: 128px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-round: 999px;
+
+  --rule: 1px solid var(--color-rule);
+  --rule-2: 1px solid var(--color-rule-2);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 150ms;
+  --dur: 240ms;
+  --dur-slow: 600ms;
+
+  --shadow-lift: 0 1px 2px oklch(24% 0.02 258 / 0.06);
+  --shadow-pop: 0 12px 32px -12px oklch(24% 0.02 258 / 0.25);
+}

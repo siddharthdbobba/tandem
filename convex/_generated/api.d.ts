@@ -12,7 +12,6 @@ import type * as auth from "../auth.js";
 import type * as crons from "../crons.js";
 import type * as files from "../files.js";
 import type * as http from "../http.js";
-import type * as invites from "../invites.js";
 import type * as lib from "../lib.js";
 import type * as maintenance from "../maintenance.js";
 import type * as presence from "../presence.js";
@@ -31,7 +30,6 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   files: typeof files;
   http: typeof http;
-  invites: typeof invites;
   lib: typeof lib;
   maintenance: typeof maintenance;
   presence: typeof presence;

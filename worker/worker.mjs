@@ -186,7 +186,11 @@ async function runOne(run, job) {
       } catch {
         continue;
       }
-      for (const e of tr.feed(ev)) emit(e.kind, e.text);
+      for (const e of tr.feed(ev)) {
+        // Login problems get one friendly message at the end instead of jcode's raw text.
+        if (e.kind === "error" && AUTH_ERR.test(e.text)) continue;
+        emit(e.kind, e.text);
+      }
       if (tr.takeTouched()) safeSync(run.workspaceId);
     }
   });
@@ -200,7 +204,7 @@ async function runOne(run, job) {
   if (code !== 0 && !cancelled && !failed) emit("error", `agent exited ${code}\n${stderr.trim()}`);
   const why = failed ?? stderr;
   if (code !== 0 && !cancelled && AUTH_ERR.test(why)) {
-    emit("error", `${run.author}'s ${job.provider} subscription isn't connected or has expired. Connect it in Settings.`);
+    emit("error", `${run.author}'s ${job.provider === "claude" ? "Claude" : "ChatGPT"} subscription isn't connected yet. Connect it in Settings, then send this again.`);
     await client.mutation(api.worker.setConnection, {
       ...s, sandboxKey: job.sandboxKey, provider: job.provider, status: "error", detail: clip(why, 280),
     }).catch(() => {});

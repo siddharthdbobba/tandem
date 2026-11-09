@@ -3,6 +3,7 @@ import { Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery } fr
 import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
+import Landing from "./Landing";
 
 const COLORS = ["#e5484d", "#f76b15", "#ffc53d", "#46a758", "#12a594", "#0090ff", "#8e4ec6", "#d6409f"];
 const PROVIDERS = [
@@ -30,10 +31,10 @@ export default function App() {
   return (
     <>
       <AuthLoading>
-        <div className="center dim">Loading…</div>
+        <div className="loading"><span className="spin" aria-hidden="true" /> Loading…</div>
       </AuthLoading>
       <Unauthenticated>
-        <SignIn />
+        <SignedOut />
       </Unauthenticated>
       <Authenticated>
         <SignedIn />
@@ -42,17 +43,35 @@ export default function App() {
   );
 }
 
-function SignIn() {
+// Signed-out routes: #/signin and #/signup show the form, a #/join link shows
+// sign-up and remembers the invite; everything else is the landing page.
+function SignedOut() {
+  const route = useRoute();
+  if (route.kind === "join" && route.arg) sessionStorage.setItem("tandem-join", route.arg);
+  if (route.kind === "signin") return <SignIn initial="signIn" />;
+  if (route.kind === "signup" || route.kind === "join") return <SignIn initial="signUp" />;
+  return <Landing />;
+}
+
+function SignIn({ initial }: { initial: "signIn" | "signUp" }) {
   const { signIn } = useAuthActions();
-  // Arriving from a workspace invite link? That code also lets you sign up.
-  const linkCode = location.hash.match(/^#\/join\/([a-z0-9]+)/)?.[1] ?? "";
-  const [flow, setFlow] = useState<"signIn" | "signUp">(linkCode ? "signUp" : "signIn");
+  const [flow, setFlow] = useState<"signIn" | "signUp">(initial);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  useEffect(() => setFlow(initial), [initial]);
+  const joining = !!sessionStorage.getItem("tandem-join");
   return (
-    <div className="center">
-      <h1>Tandem</h1>
-      <p className="dim">Multiplayer coding agent. Shared folders, many prompts, live output. Each person's agent runs on their own AI subscription.</p>
+    <div className="auth">
+      <a href="#/" className="brand auth__brand"><span className="brand__mark" aria-hidden="true" />Tandem</a>
+      <div className="auth__card">
+      <h1 className="auth__title">{flow === "signIn" ? "Sign in" : "Create your account"}</h1>
+      <p className="auth__sub">
+        {joining
+          ? "You've been invited to a workspace. Sign in or create an account to join it."
+          : flow === "signIn"
+            ? "Welcome back. Your settings and workspaces are waiting."
+            : "Takes a few seconds. You'll connect your AI subscription afterwards."}
+      </p>
       <form
         className="stack"
         onSubmit={async (e) => {
@@ -67,7 +86,6 @@ function SignIn() {
             const msg = String((err as { data?: string })?.data ?? (err as Error).message ?? "");
             setError(
               flow === "signIn" ? "Wrong email or password."
-              : /invite/i.test(msg) ? "That invite code isn't valid. Tandem is invite-only for now."
               : /8 characters/.test(msg) ? "Password must be at least 8 characters."
               : "Couldn't create the account. If you already have one, sign in instead.",
             );
@@ -76,19 +94,35 @@ function SignIn() {
           }
         }}
       >
-        {flow === "signUp" && <input name="name" placeholder="Display name" required maxLength={40} />}
         {flow === "signUp" && (
-          <input name="invite" placeholder="Invite code" required defaultValue={linkCode} autoComplete="off" />
+          <label className="field">
+            <span>Display name</span>
+            <input name="name" required maxLength={40} autoComplete="nickname" />
+          </label>
         )}
-        <input name="email" type="email" placeholder="Email" required autoComplete="email" />
-        <input name="password" type="password" placeholder="Password (8+ characters)" required minLength={8}
-          autoComplete={flow === "signIn" ? "current-password" : "new-password"} />
-        <button disabled={busy}>{flow === "signIn" ? "Sign in" : "Create account"}</button>
-        {error && <p className="err">{error}</p>}
+        <label className="field">
+          <span>Email</span>
+          <input name="email" type="email" required autoComplete="email" />
+        </label>
+        <label className="field">
+          <span>Password {flow === "signUp" && <em>8+ characters</em>}</span>
+          <input name="password" type="password" required minLength={8}
+            autoComplete={flow === "signIn" ? "current-password" : "new-password"} />
+        </label>
+        <button className="btn btn--primary btn--block" disabled={busy} aria-busy={busy}>
+          {busy ? <span className="spin" aria-hidden="true" /> : null}
+          {flow === "signIn" ? "Sign in" : "Create account"}
+        </button>
+        {error && <p className="err" role="alert">{error}</p>}
       </form>
-      <button className="ghost" onClick={() => setFlow(flow === "signIn" ? "signUp" : "signIn")}>
-        {flow === "signIn" ? "New here? Create an account (invite only)" : "Have an account? Sign in"}
-      </button>
+      </div>
+      <p className="auth__switch">
+        {flow === "signIn" ? "New to Tandem? " : "Already have an account? "}
+        <a href={flow === "signIn" ? "#/signup" : "#/signin"} className="textlink"
+          onClick={(e) => { if (location.hash.startsWith("#/join")) { e.preventDefault(); setFlow(flow === "signIn" ? "signUp" : "signIn"); } }}>
+          {flow === "signIn" ? "Create an account" : "Sign in"}
+        </a>
+      </p>
     </div>
   );
 }
@@ -100,7 +134,15 @@ function SignedIn() {
   useEffect(() => {
     if (me && !me.profile) init();
   }, [me, init]);
-  if (!me?.profile) return <div className="center dim">Loading…</div>;
+  if (!me?.profile) return <div className="loading"><span className="spin" aria-hidden="true" /> Loading…</div>;
+  // Came in through an invite link before signing in? Finish joining now.
+  const pendingJoin = sessionStorage.getItem("tandem-join");
+  if (pendingJoin && route.kind !== "join") {
+    sessionStorage.removeItem("tandem-join");
+    location.hash = `/join/${pendingJoin}`;
+    return null;
+  }
+  if (route.kind === "join") sessionStorage.removeItem("tandem-join");
   if (route.kind === "settings") return <Settings />;
   if (route.kind === "join") return <Join code={route.arg} />;
   if (route.kind === "w" && route.arg) return <Workspace id={route.arg as Id<"workspaces">} />;
@@ -114,48 +156,81 @@ function TopRight() {
   return (
     <div className="topright">
       {me && !connected && (
-        <a href="#/settings" className="warn-pill">Connect your AI subscription</a>
+        <a href="#/settings" className="warn-pill"><span className="warn-pill__dot" aria-hidden="true" />Connect your AI subscription</a>
       )}
-      <a href="#/settings" className="ghost-link" title="Settings">
+      <a href="#/settings" className="me" title="Settings">
         <span className="avatar" style={{ background: me?.profile?.color }}>{me?.profile?.name[0]?.toUpperCase()}</span>
+        <span className="me__name">{me?.profile?.name}</span>
       </a>
       <button className="ghost" onClick={() => signOut()}>Sign out</button>
     </div>
   );
 }
 
+function AppBar({ children }: { children?: React.ReactNode }) {
+  return (
+    <header className="bar">
+      <a href="#/" className="brand"><span className="brand__mark" aria-hidden="true" />Tandem</a>
+      {children}
+      <TopRight />
+    </header>
+  );
+}
+
 function Home() {
   const workspaces = useQuery(api.workspaces.list);
   const create = useMutation(api.workspaces.create);
+  const me = useQuery(api.profile.me);
   const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
   return (
     <div className="page">
-      <header className="bar">
-        <a href="#/" className="logo">Tandem</a>
-        <TopRight />
-      </header>
-      <div className="center">
-        <h2>Your workspaces</h2>
+      <AppBar />
+      <main className="home">
+        <div className="home__head">
+          <h1 className="home__title">Your workspaces</h1>
+          <p className="home__sub">Each workspace is one shared folder. Invite people with its link.</p>
+        </div>
         <form
+          className="newws"
           onSubmit={async (e) => {
             e.preventDefault();
             if (!name.trim()) return;
-            const id = await create({ name: name.trim() });
-            location.hash = `/w/${id}`;
+            setBusy(true);
+            try {
+              const id = await create({ name: name.trim() });
+              location.hash = `/w/${id}`;
+            } finally {
+              setBusy(false);
+            }
           }}
         >
-          <input placeholder="New workspace name" value={name} onChange={(e) => setName(e.target.value)} />
-          <button>Create</button>
+          <label className="sr-only" htmlFor="newws">New workspace name</label>
+          <input id="newws" placeholder="Name a new workspace, e.g. trail-weather" value={name}
+            onChange={(e) => setName(e.target.value)} maxLength={60} />
+          <button className="btn btn--primary" disabled={busy || !name.trim()}>Create workspace</button>
         </form>
-        <ul className="ws-list">
-          {workspaces?.map((w) => (
-            <li key={w._id}>
-              <a href={`#/w/${w._id}`}>{w.name}</a> <span className="dim">owner {w.owner}</span>
-            </li>
-          ))}
-          {workspaces?.length === 0 && <li className="dim">None yet. Create one or open an invite link.</li>}
-        </ul>
-      </div>
+        {workspaces === undefined ? (
+          <p className="dim">Loading…</p>
+        ) : workspaces.length === 0 ? (
+          <div className="empty">
+            <p className="empty__title">No workspaces yet</p>
+            <p className="dim">Create one above, or open an invite link someone sent you.</p>
+          </div>
+        ) : (
+          <ul className="wslist">
+            {workspaces.map((w) => (
+              <li key={w._id}>
+                <a href={`#/w/${w._id}`} className="wslist__row">
+                  <span className="wslist__name">{w.name}</span>
+                  <span className="wslist__meta">{w.owner === me?.profile?.name ? "yours" : `shared by ${w.owner}`}</span>
+                  <span className="wslist__go" aria-hidden="true">→</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </main>
     </div>
   );
 }
@@ -168,7 +243,12 @@ function Join({ code }: { code: string }) {
       .then((id) => (location.hash = `/w/${id}`))
       .catch((e) => setError(String(e.message).includes("invalid") ? "This invite link is invalid." : "Could not join."));
   }, [code, join]);
-  return <div className="center">{error ? <>{error} <a href="#/">Home</a></> : <span className="dim">Joining…</span>}</div>;
+  return (
+    <div className="loading">
+      {error ? <span>{error} <a href="#/" className="textlink">Back to your workspaces</a></span>
+        : <><span className="spin" aria-hidden="true" /> Joining workspace…</>}
+    </div>
+  );
 }
 
 function Settings() {
@@ -192,13 +272,10 @@ function Settings() {
 
   return (
     <div className="page">
-      <header className="bar">
-        <a href="#/" className="logo">Tandem</a>
-        <TopRight />
-      </header>
-      <div className="center settings">
-        <h2>Settings</h2>
-        <p className="dim">Saved to your account, so it follows you to any device. Signed in as {me.email}.</p>
+      <AppBar />
+      <main className="settings">
+        <h1 className="home__title">Settings</h1>
+        <p className="home__sub">Saved to your account, so it follows you to any device. Signed in as {me.email}.</p>
 
         <section>
           <h3>Profile</h3>
@@ -235,7 +312,8 @@ function Settings() {
                 <span className={`badge ${st?.status ?? "none"}`}>
                   {st?.status === "connected" ? "connected" : st?.status === "error" ? "needs reconnect" : "not connected"}
                 </span>
-                <button className="ghost" onClick={() => startConnect({ provider: pr.id })}>
+                <button className={`btn btn--sm ${st?.status === "connected" ? "btn--ghost" : "btn--primary"}`}
+                  onClick={() => startConnect({ provider: pr.id })}>
                   {st?.status === "connected" ? "Reconnect" : "Connect"}
                 </button>
               </div>
@@ -280,8 +358,8 @@ function Settings() {
               onClick={async () => { await update({ model: model || null }); setModel(null); flash("Model saved"); }}>Save</button>
           </div>
         </section>
-        {saved && <p className="ok">{saved}</p>}
-      </div>
+        {saved && <p className="ok" role="status">{saved}</p>}
+      </main>
     </div>
   );
 }
@@ -308,30 +386,29 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
     return () => clearInterval(t);
   }, [id, focusPane, heartbeat]);
 
-  if (ws === null) return <div className="center">Workspace not found. <a href="#/">Back</a></div>;
+  if (ws === null) return <div className="loading">Workspace not found. <a href="#/" className="textlink">Back to your workspaces</a></div>;
   const myId = me?.userId;
 
   return (
     <div className="layout">
-      <header>
-        <a href="#/" className="logo">Tandem</a>
+      <AppBar>
+        <span className="crumb" aria-hidden="true">/</span>
         <span className="ws-name">{ws?.name}</span>
-        <button className="ghost" onClick={() => {
+        <button className="btn btn--ghost btn--sm" onClick={() => {
           navigator.clipboard.writeText(`${location.origin}${location.pathname}#/join/${ws?.inviteCode}`);
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
         }}>
-          {copied ? "Copied" : "Copy invite link"}
+          {copied ? "Link copied" : "Copy invite link"}
         </button>
-        <div className="people">
+        <div className="people" aria-label="People here now">
           {people?.map((p) => (
-            <span key={p._id} className="avatar" style={{ background: p.color }} title={p.name}>
+            <span key={p._id} className="avatar avatar--sm" style={{ background: p.color }} title={p.name}>
               {p.name[0]?.toUpperCase()}
             </span>
           ))}
         </div>
-        <TopRight />
-      </header>
+      </AppBar>
       <aside>
         <FileTree workspaceId={id} open={openFile} onOpen={setOpenFile} />
       </aside>

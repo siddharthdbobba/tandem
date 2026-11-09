@@ -6,7 +6,7 @@ Each person's prompts run through the [Jcode](https://github.com/1jehuang/jcode)
 
 Built on [Convex](https://convex.dev) (self-hosted, with Convex Auth) plus React and a small Node worker.
 
-**Live:** https://tandem.siddharthbobba.com (invite-only sign-up).
+**Live:** https://tandem.siddharthbobba.com
 
 ```mermaid
 flowchart LR
@@ -40,15 +40,6 @@ flowchart LR
 4. The worker runs `jcode run --ndjson` as that person's own Linux user (`tdu_<key>`) in the shared workspace directory, and turns each event (text, shell command, file edit) into an `events` row. Every viewer re-renders live, with a tag showing whose subscription it ran on.
 5. Agent file writes get mirrored into the `files` table. Browser edits set `pendingWrite`, and the worker writes them to disk.
 6. Context is kept per (pane, person): each person's follow-ups resume their own Jcode session.
-
-### Invite-only sign-up
-
-Running an agent means running code on the host VM, so new accounts need an invite. Two kinds work:
-
-- **Signup codes**, minted by the operator: `npx convex run invites:create '{"maxUses": 5, "note": "friends"}'` (`invites:list` shows usage).
-- **Workspace invite links** (`/#/join/<code>`), shared by any member. The sign-up form opens with the code already filled in.
-
-Existing users sign in without a code. The check runs inside Convex Auth's `createOrUpdateUser` callback, so it can't be bypassed from the client.
 
 ### Accounts and saved configuration
 
@@ -129,7 +120,7 @@ I run the backend, worker and UI as systemd user services on an Oracle ARM VM, e
 All suites run against a live deployment:
 
 ```bash
-export CONVEX_URL=https://api.tandem.siddharthbobba.com UI_URL=https://tandem.siddharthbobba.com TANDEM_INVITE=<signup code> WORKER_HOST=your-vm WORKSPACES_DIR=/srv/tandem/workspaces
+export CONVEX_URL=https://api.tandem.siddharthbobba.com UI_URL=https://tandem.siddharthbobba.com WORKER_HOST=your-vm WORKSPACES_DIR=/srv/tandem/workspaces
 node tests/translator.mjs             # 7: replays real captured jcode runs through the worker (offline)
 node tests/accounts.mjs               # 12: auth, saved settings, membership, per-user sandbox + isolation, connect flow
 node tests/smoke.mjs                  # 8: API, path validation, file sync, queueing, presence

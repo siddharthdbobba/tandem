@@ -30,14 +30,9 @@ await test("sign-up creates profile with given name", async () => {
   assert.equal(me.profile.provider, "claude");
 });
 
-await test("signup is invite-only; workspace invite codes also admit; bad codes rejected", async () => {
-  await assert.rejects(account(`noinv-${id}@test.dev`, "pass-pass-123", "X", "signUp", ""));
-  await assert.rejects(account(`badinv-${id}@test.dev`, "pass-pass-123", "X", "signUp", "notarealcode"));
-  const { inviteCode } = await alice.query(api.workspaces.get, { id: (await alice.mutation(api.workspaces.create, { name: `inv ${id}` })) });
-  const friend = await account(`friend-${id}@test.dev`, "pass-pass-123", "Friend", "signUp", inviteCode);
-  assert.equal((await friend.query(api.profile.me, {})).profile.name, "Friend");
-  // existing users sign in without any code
-  await account(aliceEmail, "alice-pass-123", undefined, "signIn", "");
+await test("anyone can sign up without an invite code", async () => {
+  const open = await account(`open-${id}@test.dev`, "pass-pass-123", "Open", "signUp");
+  assert.equal((await open.query(api.profile.me, {})).profile.name, "Open");
 });
 
 await test("wrong password, taken email, short password are rejected", async () => {
@@ -106,7 +101,9 @@ await test("prompt runs as the prompter's own sandbox, unconnected -> clear erro
   const r = feed.at(-1);
   assert.equal(r.status, "error");
   assert.equal(r.provider, "claude");
-  assert.match(r.events.map((e) => e.text).join("\n"), /Bob's claude subscription isn't connected/);
+  const text = r.events.map((e) => e.text).join("\n");
+  assert.match(text, /Bob's Claude subscription isn't connected yet/);
+  assert.doesNotMatch(text, /No tokens\/providers left/); // raw jcode error is hidden
   const bobMe = await bob.query(api.profile.me, {});
   assert.equal(bobMe.connections.find((c) => c.provider === "claude")?.status, "error");
   // Alice's connection state is untouched by Bob's failure.

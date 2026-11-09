@@ -44,7 +44,9 @@ export default function App() {
 
 function SignIn() {
   const { signIn } = useAuthActions();
-  const [flow, setFlow] = useState<"signIn" | "signUp">("signIn");
+  // Arriving from a workspace invite link? That code also lets you sign up.
+  const linkCode = location.hash.match(/^#\/join\/([a-z0-9]+)/)?.[1] ?? "";
+  const [flow, setFlow] = useState<"signIn" | "signUp">(linkCode ? "signUp" : "signIn");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   return (
@@ -62,13 +64,22 @@ function SignIn() {
           try {
             await signIn("password", fd);
           } catch (err) {
-            setError(flow === "signIn" ? "Wrong email or password." : String((err as Error).message).split("\n")[0]);
+            const msg = String((err as { data?: string })?.data ?? (err as Error).message ?? "");
+            setError(
+              flow === "signIn" ? "Wrong email or password."
+              : /invite/i.test(msg) ? "That invite code isn't valid. Tandem is invite-only for now."
+              : /8 characters/.test(msg) ? "Password must be at least 8 characters."
+              : "Couldn't create the account. If you already have one, sign in instead.",
+            );
           } finally {
             setBusy(false);
           }
         }}
       >
         {flow === "signUp" && <input name="name" placeholder="Display name" required maxLength={40} />}
+        {flow === "signUp" && (
+          <input name="invite" placeholder="Invite code" required defaultValue={linkCode} autoComplete="off" />
+        )}
         <input name="email" type="email" placeholder="Email" required autoComplete="email" />
         <input name="password" type="password" placeholder="Password (8+ characters)" required minLength={8}
           autoComplete={flow === "signIn" ? "current-password" : "new-password"} />
@@ -76,7 +87,7 @@ function SignIn() {
         {error && <p className="err">{error}</p>}
       </form>
       <button className="ghost" onClick={() => setFlow(flow === "signIn" ? "signUp" : "signIn")}>
-        {flow === "signIn" ? "New here? Create an account" : "Have an account? Sign in"}
+        {flow === "signIn" ? "New here? Create an account (invite only)" : "Have an account? Sign in"}
       </button>
     </div>
   );

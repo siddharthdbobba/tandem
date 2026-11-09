@@ -135,6 +135,28 @@ try {
     await until(async () => (await A.js("document.querySelectorAll('.pane').length")) === before + 1, 10000, "alice sees pane");
   });
 
+  await test("sign-up page asks for an invite, rejects a bad one, prefills from a workspace link", async () => {
+    const C = await browser("carl", 9343);
+    try {
+      await C.send("Page.navigate", { url: `${UI}/` });
+      await until(async () => (await C.js("!!document.querySelector('form.stack')")), 15000, "form");
+      await C.js("[...document.querySelectorAll('button.ghost')].find(b=>b.textContent.includes('Create an account')).click(), true");
+      await until(async () => (await C.js("!!document.querySelector('input[name=invite]')")), 5000, "invite field");
+      await C.js(`(() => {
+        const set = (sel, v) => { const el = document.querySelector(sel); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); };
+        set('input[name=name]', 'Carl'); set('input[name=invite]', 'notarealcode'); set('input[name=email]', 'carl-${id}@test.dev'); set('input[name=password]', 'carl-pass-123');
+        document.querySelector('form.stack').requestSubmit(); return true; })()`);
+      await until(async () => /invite code isn't valid/.test(await C.js("document.body.innerText")), 15000, "invite error");
+      // Workspace invite link: sign-up opens with the code filled in.
+      await C.send("Page.navigate", { url: `${UI}/#/join/${inviteCode}` });
+      await sleep(500);
+      await C.send("Page.reload");
+      await until(async () => (await C.js("document.querySelector('input[name=invite]')?.value")) === inviteCode, 15000, "prefilled invite");
+    } finally {
+      C.ws.close(); C.proc.kill("SIGTERM");
+    }
+  });
+
   await test("no page errors in either browser", async () => {
     assert.deepEqual(await A.js("window.__errs"), []);
     assert.deepEqual(await B.js("window.__errs"), []);

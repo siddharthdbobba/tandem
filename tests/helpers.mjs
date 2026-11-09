@@ -7,11 +7,11 @@ export const URL = process.env.CONVEX_URL ?? "http://127.0.0.1:3310";
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Returns an authenticated ConvexHttpClient for a fresh or existing account.
-export async function account(email, password = "test-password-123", name, flow = "signUp") {
+export async function account(email, password = "test-password-123", name, flow = "signUp", invite = process.env.TANDEM_INVITE) {
   const c = new ConvexHttpClient(URL);
   const r = await c.action(api.auth.signIn, {
     provider: "password",
-    params: { email, password, flow, ...(name ? { name } : {}) },
+    params: { email, password, flow, ...(name ? { name } : {}), ...(flow === "signUp" && invite ? { invite } : {}) },
   });
   if (!r?.tokens?.token) throw new Error(`${flow} failed for ${email}`);
   c.setAuth(r.tokens.token);

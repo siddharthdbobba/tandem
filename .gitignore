@@ -4,3 +4,4 @@ dist
 *.log
 tests/codex/.chrome
 tests/.chrome-*
+.wrangler

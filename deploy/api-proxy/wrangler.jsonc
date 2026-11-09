@@ -1,0 +1,7 @@
+{
+  "name": "tandem-api",
+  "main": "index.js",
+  "compatibility_date": "2026-11-01",
+  "vars": { "BACKEND": "https://rach.taile96da7.ts.net:10000" },
+  "routes": [{ "pattern": "api.tandem.siddharthbobba.com", "custom_domain": true }]
+}

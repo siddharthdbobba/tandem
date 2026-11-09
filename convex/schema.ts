@@ -7,6 +7,15 @@ export const provider = v.union(v.literal("claude"), v.literal("openai"));
 export default defineSchema({
   ...authTables,
 
+  // Invite-only signup codes (see convex/invites.ts).
+  signupInvites: defineTable({
+    code: v.string(),
+    uses: v.number(),
+    maxUses: v.number(),
+    expiresAt: v.optional(v.number()),
+    note: v.optional(v.string()),
+  }).index("by_code", ["code"]),
+
   // Saved per-account settings. One row per user.
   profiles: defineTable({
     userId: v.id("users"),

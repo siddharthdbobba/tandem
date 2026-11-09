@@ -30,6 +30,16 @@ await test("sign-up creates profile with given name", async () => {
   assert.equal(me.profile.provider, "claude");
 });
 
+await test("signup is invite-only; workspace invite codes also admit; bad codes rejected", async () => {
+  await assert.rejects(account(`noinv-${id}@test.dev`, "pass-pass-123", "X", "signUp", ""));
+  await assert.rejects(account(`badinv-${id}@test.dev`, "pass-pass-123", "X", "signUp", "notarealcode"));
+  const { inviteCode } = await alice.query(api.workspaces.get, { id: (await alice.mutation(api.workspaces.create, { name: `inv ${id}` })) });
+  const friend = await account(`friend-${id}@test.dev`, "pass-pass-123", "Friend", "signUp", inviteCode);
+  assert.equal((await friend.query(api.profile.me, {})).profile.name, "Friend");
+  // existing users sign in without any code
+  await account(aliceEmail, "alice-pass-123", undefined, "signIn", "");
+});
+
 await test("wrong password, taken email, short password are rejected", async () => {
   await assert.rejects(account(aliceEmail, "nope-nope-nope", undefined, "signIn"));
   await assert.rejects(account(aliceEmail, "someone-elses-pw", "Mallory", "signUp"));

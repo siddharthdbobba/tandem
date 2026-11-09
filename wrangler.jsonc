@@ -1,0 +1,8 @@
+{
+  // Static Tandem UI on Cloudflare. The app talks to the Convex backend
+  // directly (VITE_CONVEX_URL at build time), so this Worker only serves files.
+  "name": "tandem",
+  "compatibility_date": "2026-11-01",
+  "assets": { "directory": "./dist", "not_found_handling": "single-page-application" },
+  "routes": [{ "pattern": "tandem.siddharthbobba.com", "custom_domain": true }]
+}

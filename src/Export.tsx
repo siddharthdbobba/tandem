@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useConvex } from "convex/react";
-import { strToU8, zipSync } from "fflate";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 
@@ -17,6 +16,7 @@ export function ExportButton({ workspaceId, name, code }: {
 
   const download = async () => {
     setSkipped([]);
+    const { strToU8, zipSync } = await import("fflate"); // only needed when someone exports
     const files = await convex.query(api.files.tree, { workspaceId, code });
     setProgress({ done: 0, total: files.length });
     const zip: Record<string, Uint8Array> = {};

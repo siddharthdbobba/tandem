@@ -1,8 +1,12 @@
 import { useMutation, useQuery } from "convex/react";
-import { diffLines } from "diff";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
+
+// The diff library is only needed when someone opens a change, so load it then.
+type DiffLines = typeof import("diff").diffLines;
+let diffLinesFn: DiffLines | null = null;
+const loadDiff = () => import("diff").then((m) => { diffLinesFn = m.diffLines; return m.diffLines; });
 
 // "What changed" under a finished agent run: file list, a diff per file, and undo.
 export function RunChanges({ runId, code, readOnly }: { runId: Id<"runs">; code?: string; readOnly: boolean }) {
@@ -50,9 +54,11 @@ function Diff({ changeId, code, readOnly }: { changeId: Id<"changes">; code?: st
   const d = useQuery(api.changes.diff, { changeId, code });
   const revert = useMutation(api.changes.revert);
   const [err, setErr] = useState("");
-  if (!d) return <div className="diff dim">Loading…</div>;
+  const [, setReady] = useState(!!diffLinesFn);
+  useEffect(() => { if (!diffLinesFn) loadDiff().then(() => setReady(true)); }, []);
+  if (!d || !diffLinesFn) return <div className="diff dim">Loading…</div>;
   if (d.binary) return <div className="diff dim">Binary file ({d.kind}). Open it from the file list to view.</div>;
-  const parts = diffLines(d.before, d.after);
+  const parts = diffLinesFn(d.before, d.after);
   // Show changed lines plus 2 lines of context, collapsing long unchanged runs.
   const rows: { t: "add" | "del" | "ctx" | "gap"; s: string }[] = [];
   parts.forEach((p, i) => {

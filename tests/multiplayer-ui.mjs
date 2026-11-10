@@ -74,6 +74,7 @@ const wsId = await alice.mutation(api.workspaces.create, { name: "multiplayer-ui
 const { inviteCode } = await alice.query(api.workspaces.get, { id: wsId });
 await carol.mutation(api.workspaces.join, { inviteCode });
 await alice.mutation(api.files.save, { workspaceId: wsId, path: "shared.txt", content: "v1" });
+await alice.mutation(api.files.save, { workspaceId: wsId, path: "notes.md", content: "" });
 
 // Real sign-in through the UI form, then open the invite link.
 async function signInUI(b, [email, password]) {
@@ -107,6 +108,20 @@ try {
   await test("both users see each other in presence", async () => {
     await until(async () => (await A.js("[...document.querySelectorAll('.people .avatar')].map(a=>a.title).sort().join(',')")) === "alice,bob", 25000, "presence");
     assert.equal(await B.js("[...document.querySelectorAll('.people .avatar')].map(a=>a.title).sort().join(',')"), "alice,bob");
+  });
+
+  await test("pasting a Google Doc into a .md file becomes markdown", async () => {
+    await until(async () => (await A.js("[...document.querySelectorAll('.file__name')].some(f=>f.textContent.startsWith('notes.md'))")), 15000, "notes.md in tree");
+    await A.js("[...document.querySelectorAll('.file')].find(f=>f.querySelector('.file__name').textContent.startsWith('notes.md')).click(), true");
+    await until(async () => (await A.js("!!document.querySelector('.cm-content')")), 10000, "editor");
+    await A.js(`(() => { const c = document.querySelector('.cm-content'); c.focus();
+      const dt = new DataTransfer();
+      dt.setData('text/html', '<b style="font-weight:normal"><h2><span>Packing</span></h2><ul><li><p><span style="font-weight:700">Tent</span></p></li><li><p><a href="https://rei.com">Stove</a></p></li></ul></b>');
+      dt.setData('text/plain', 'Packing Tent Stove');
+      c.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); return true; })()`);
+    await until(async () => (await A.js(cmText)).includes("## Packing"), 5000, "converted");
+    assert.equal((await A.js(cmText)).trim(), "## Packing\n\n- **Tent**\n- [Stove](https://rei.com)");
+    await A.js("[...document.querySelectorAll('.editor button')].find(b=>b.textContent.includes('panes')).click(), true");
   });
 
   await test("file edit by alice shows live in bob's open editor", async () => {

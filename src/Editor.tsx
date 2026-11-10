@@ -13,6 +13,7 @@ import { json } from "@codemirror/lang-json";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import { renderMarkdown } from "./markdown";
+import { htmlToMarkdown } from "./paste";
 import { useView } from "./view";
 import { PublishButton } from "./Publish";
 
@@ -53,6 +54,8 @@ function CodeEditor({ content, path, readOnly, onChange, onSave }: {
   const onSaveRef = useRef(onSave);
   const language = useRef(new Compartment());
   const editing = useRef(new Compartment());
+  const pathRef = useRef(path);
+  pathRef.current = path;
   onChangeRef.current = onChange;
   onSaveRef.current = onSave;
 
@@ -66,6 +69,18 @@ function CodeEditor({ content, path, readOnly, onChange, onSave }: {
         language.current.of(languageFor(path)),
         editing.current.of([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]),
         keymap.of([...historyKeymap, indentWithTab, { key: "Mod-s", run: () => { onSaveRef.current(); return true; } }]),
+        // Pasting rich text (Google Docs, web pages) into a .md file keeps its formatting as markdown.
+        EditorView.domEventHandlers({
+          paste: (e, v) => {
+            const html = e.clipboardData?.getData("text/html");
+            if (!html || kindOf(pathRef.current, false) !== "markdown") return false;
+            const md = htmlToMarkdown(html);
+            if (!md.trim()) return false;
+            e.preventDefault();
+            v.dispatch(v.state.replaceSelection(md), { scrollIntoView: true, userEvent: "input.paste" });
+            return true;
+          },
+        }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !update.transactions.some((tr) => tr.annotation(remoteUpdate))) onChangeRef.current(update.state.doc.toString());
         }),
@@ -188,7 +203,10 @@ export function Editor({ workspaceId, path, onClose }: { workspaceId: Id<"worksp
   const save = useMutation(api.files.save);
   const [draft, setDraft] = useState<string | null>(null);
   const kind = kindOf(path, !!file?.blob);
-  const [mode, setMode] = useState<"preview" | "source">("preview");
+  // Markdown/HTML open as a preview, except empty files, which open ready to type.
+  const [picked, setMode] = useState<"preview" | "source" | null>(null);
+  const mode = picked ?? (file && !file.blob && !file.content?.trim() ? "source" : "preview");
+  useEffect(() => { if (file && picked === null) setMode(mode); }, [file, picked, mode]);
   const dirty = draft !== null && draft !== file?.content;
   const value = draft ?? file?.content ?? "";
   const previewable = kind === "markdown" || kind === "html";

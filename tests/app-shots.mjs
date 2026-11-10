@@ -27,6 +27,8 @@ const send = (method, params = {}) => new Promise((r) => { const i = ++n; pend.s
 const js = async (e) => (await send("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true })).result?.value;
 const shoot = async (name, w = 1440, h = 900) => {
   await send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: w < 600 });
+  await send("Emulation.setTouchEmulationEnabled", { enabled: w < 600, maxTouchPoints: w < 600 ? 5 : 0 });
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "hover", value: w < 600 ? "none" : "hover" }, { name: "pointer", value: w < 600 ? "coarse" : "fine" }] });
   await sleep(800);
   const s = await send("Page.captureScreenshot", { format: "png" });
   fs.writeFileSync(path.join(out, name), Buffer.from(s.data, "base64"));
@@ -55,6 +57,8 @@ await u.mutation(api.chat.react, { messageId: msgs[0]._id, emoji: "👍" });
 await send("Page.navigate", { url: `${UI}/#/w/${ws}` }); await sleep(3000);
 await js("localStorage.setItem('tandem-tour-done','1'); [...document.querySelectorAll('.panel-toggle')].find(b=>b.textContent.includes('Chat'))?.click()"); await sleep(1500);
 await shoot("chat.png");
+await shoot("chat-m.png", 390, 844);
+await js("document.querySelector('.react-toggle')?.click()"); await shoot("chat-m-react.png", 390, 844);
 await js("[...document.querySelectorAll('.side__tabs button')].find(b=>b.textContent==='Workspace')?.click()"); await sleep(800);
 await shoot("ws-settings.png");
 await js("document.querySelector('.side__close')?.click()");

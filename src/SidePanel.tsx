@@ -75,6 +75,8 @@ function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
     if (Date.now() - lastPing.current > 3000) { lastPing.current = Date.now(); setTyping({ workspaceId, typing: true }).catch(() => {}); }
   };
   const [text, setText] = useState("");
+  // Touch screens can't hover: "+" opens the reaction/reply row for one message.
+  const [pickFor, setPickFor] = useState<string | null>(null);
   const [err, setErr] = useState("");
   const end = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -147,7 +149,11 @@ function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
                     </button>
                   ))}
                   {!readOnly && (
-                    <span className="react-add">
+                    <button type="button" className="react react-toggle ghost" aria-label="React or reply" aria-expanded={pickFor === m._id}
+                      onClick={() => setPickFor(pickFor === m._id ? null : m._id)}>+</button>
+                  )}
+                  {!readOnly && (
+                    <span className={`react-add ${pickFor === m._id ? "open" : ""}`} onClick={() => setPickFor(null)}>
                       {REACTIONS.filter((e) => !m.reactions.some((r) => r.emoji === e)).map((e) => (
                         <button key={e} type="button" className="react react--pick ghost" aria-label={`React ${e}`}
                           onClick={() => react({ messageId: m._id, emoji: e })}>{e}</button>

@@ -312,3 +312,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="tab"]:focus-v
 .msg-actions .copy-btn { position: static; opacity: 1; }
 .ev-msg:hover .msg-actions, .msg-actions:focus-within { opacity: 1; }
 @media (hover: none) { .msg-actions { position: static; opacity: 1; margin-top: 2px; } }
+
+/* Touch: "+" toggles the reaction/reply row inline (no hover on phones) */
+.react-toggle { display: none; }
+@media (hover: none) {
+  .react-toggle { display: inline-flex; color: var(--color-muted); }
+  .react-add.open { display: inline-flex; position: static; opacity: 1; pointer-events: auto; box-shadow: none; }
+}
+@media (hover: none) { .reacts .react { min-height: 0; } .react-toggle { width: 26px; height: 24px; justify-content: center; padding: 0; } }

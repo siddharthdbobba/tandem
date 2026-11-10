@@ -270,6 +270,12 @@ try {
     await B.js("[...document.querySelectorAll('.panel-toggle')].find(b=>b.textContent.includes('Chat')).click(), true");
     await until(async () => /who's bringing the stove/.test(await B.js("document.querySelector('.chat__log')?.innerText ?? ''")), 8000, "bob reads it");
     await until(async () => !(await B.js("!!document.querySelector('.panel-toggle .side__badge')")), 5000, "badge clears");
+    // Bob reacts 👍; alice sees the pill live and adds hers, then the count is 2.
+    await B.js("[...document.querySelectorAll('.chat__log .react--pick')].find(b=>b.textContent==='👍').click(), true");
+    await until(async () => /👍\s*1/.test(await A.js("document.querySelector('.chat__log .react:not(.react--pick)')?.textContent ?? ''")), 8000, "alice sees bob's reaction");
+    await A.js("document.querySelector('.chat__log .react:not(.react--pick)').click(), true");
+    await until(async () => /👍\s*2/.test(await B.js("document.querySelector('.chat__log .react:not(.react--pick)')?.textContent ?? ''")), 8000, "count 2 for bob");
+    assert.equal(await A.js("document.querySelector('.chat__log .react.mine')?.title"), "bob, alice");
     await B.js("[...document.querySelectorAll('.side__tabs button')].find(b=>b.textContent==='Workspace').click(), true");
     await until(async () => /alice/.test(await B.js("document.querySelector('.members')?.innerText ?? ''")), 8000, "members list");
     await B.js("document.querySelector('.side__close').click(), true");

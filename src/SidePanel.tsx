@@ -6,6 +6,9 @@ import { renderMarkdown } from "./markdown";
 import { goJoin, useView } from "./view";
 import { ExportButton } from "./Export";
 
+// Same set the server allows (convex/chat.ts REACTIONS).
+const REACTIONS = ["👍", "❤️", "😂", "🎉", "👀", "🏔️"];
+
 // Right-hand panel in a workspace: team chat (default) and workspace settings.
 export function SidePanel({ workspaceId, onClose, tab, setTab, unread }: {
   workspaceId: Id<"workspaces">;
@@ -46,6 +49,7 @@ function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
   const msgs = useQuery(api.chat.list, { workspaceId, code });
   const send = useMutation(api.chat.send);
   const vote = useMutation(api.chat.vote);
+  const react = useMutation(api.chat.react);
   const me = useQuery(api.profile.me);
   const [text, setText] = useState("");
   const [err, setErr] = useState("");
@@ -102,6 +106,25 @@ function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
                 <div className={`msg__text md ${ai ? "to-ai" : ""} ${mentionsMe(m.text) ? "mentions-me" : ""}`}
                   dangerouslySetInnerHTML={{ __html: highlightMentions(renderMarkdown(m.text), names) }} />
               )}
+              {(m.reactions.length > 0 || !readOnly) && (
+                <div className="reacts">
+                  {m.reactions.map((r) => (
+                    <button key={r.emoji} type="button" className={`react ghost ${r.mine ? "mine" : ""}`} disabled={readOnly}
+                      title={r.who.join(", ")} aria-label={`${r.emoji} ${r.count}, ${r.mine ? "remove yours" : "add yours"}`}
+                      onClick={() => react({ messageId: m._id, emoji: r.emoji })}>
+                      {r.emoji} <span>{r.count}</span>
+                    </button>
+                  ))}
+                  {!readOnly && (
+                    <span className="react-add">
+                      {REACTIONS.filter((e) => !m.reactions.some((r) => r.emoji === e)).map((e) => (
+                        <button key={e} type="button" className="react react--pick ghost" aria-label={`React ${e}`}
+                          onClick={() => react({ messageId: m._id, emoji: e })}>{e}</button>
+                      ))}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
@@ -126,7 +149,7 @@ function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
               ))}
             </div>
           )}
-          <textarea rows={1} value={text} placeholder="Message the group… (@ai to ask the AI)" aria-label="Message the group"
+          <textarea rows={1} value={text} placeholder="Message the group, or @ai…" aria-label="Message the group"
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
           <button disabled={!text.trim()} aria-label="Send message">↑</button>

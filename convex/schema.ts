@@ -68,6 +68,8 @@ export default defineSchema({
       question: v.string(),
       options: v.array(v.object({ label: v.string(), votes: v.array(v.id("users")) })),
     })),
+    // Emoji reactions: who reacted with each emoji.
+    reactions: v.optional(v.array(v.object({ emoji: v.string(), users: v.array(v.id("users")) }))),
   }).index("by_workspace", ["workspaceId"]),
 
   members: defineTable({

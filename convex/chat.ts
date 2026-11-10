@@ -31,7 +31,10 @@ export const list = query({
           label: o.label, count: o.votes.length, mine: !!me && o.votes.includes(me), voters: await Promise.all(o.votes.map(nameOf)),
         }))),
       };
-      out.push({ _id: m._id, author: m.author, color: m.color, userId: m.userId, text: m.text, at: m._creationTime, poll });
+      const reactions = await Promise.all((m.reactions ?? []).map(async (r) => ({
+        emoji: r.emoji, count: r.users.length, mine: !!me && r.users.includes(me), who: await Promise.all(r.users.map(nameOf)),
+      })));
+      out.push({ _id: m._id, author: m.author, color: m.color, userId: m.userId, text: m.text, at: m._creationTime, poll, reactions });
     }
     return out;
   },
@@ -78,6 +81,27 @@ export const send = mutation({
       context: `Recent team chat:\n${recent}`.slice(0, 20_000), fromChat: true,
     });
     return { toAgent: true, paneId: pane._id };
+  },
+});
+
+export const REACTIONS = ["👍", "❤️", "😂", "🎉", "👀", "🏔️"];
+
+// Toggle my reaction on a message. Only a fixed set of emoji is allowed.
+export const react = mutation({
+  args: { messageId: v.id("messages"), emoji: v.string() },
+  handler: async (ctx, { messageId, emoji }) => {
+    if (!REACTIONS.includes(emoji)) throw new Error("unknown reaction");
+    const m = await ctx.db.get(messageId);
+    if (!m) throw new Error("message not found");
+    const userId = await requireMember(ctx, m.workspaceId);
+    const list = [...(m.reactions ?? [])];
+    const i = list.findIndex((r) => r.emoji === emoji);
+    if (i < 0) list.push({ emoji, users: [userId] });
+    else {
+      const users = list[i].users.includes(userId) ? list[i].users.filter((u) => u !== userId) : [...list[i].users, userId];
+      if (users.length) list[i] = { emoji, users }; else list.splice(i, 1);
+    }
+    await ctx.db.patch(messageId, { reactions: list });
   },
 });
 

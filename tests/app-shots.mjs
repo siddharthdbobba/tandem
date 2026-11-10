@@ -43,6 +43,15 @@ await js("[...document.querySelectorAll('.file')].find(f=>f.querySelector('.file
 await shoot("doc.png");
 await send("Page.navigate", { url: `${UI}/#/settings` }); await sleep(3000);
 await shoot("settings.png");
+// Team chat with a message, a poll and a reaction.
+await u.mutation(api.chat.send, { workspaceId: ws, text: "Who's bringing the stove? @ai can you compare Tuolumne vs Upper Pines?" }).catch(() => {});
+await u.mutation(api.chat.send, { workspaceId: ws, text: "/poll Saturday dinner? | Tacos | Pasta | Chili" });
+const msgs = await u.query(api.chat.list, { workspaceId: ws });
+await u.mutation(api.chat.react, { messageId: msgs[0]._id, emoji: "👍" });
+await send("Page.navigate", { url: `${UI}/#/w/${ws}` }); await sleep(3000);
+await js("localStorage.setItem('tandem-tour-done','1'); [...document.querySelectorAll('.panel-toggle')].find(b=>b.textContent.includes('Chat'))?.click()"); await sleep(1500);
+await shoot("chat.png");
+await js("document.querySelector('.side__close')?.click()");
 await send("Page.navigate", { url: `${UI}/#/w/${ws}` }); await sleep(3500);
 await shoot("workspace-m.png", 390, 844);
 clearTimeout(kill); sock.close(); proc.kill("SIGKILL");

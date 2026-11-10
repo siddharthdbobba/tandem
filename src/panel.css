@@ -224,3 +224,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="tab"]:focus-v
 .react--pick { border-color: transparent; background: transparent; padding: 0 5px; }
 .react--pick:hover { background: var(--color-accent-soft); }
 @media (hover: none) { .react-add { display: none; } }
+
+/* Mobile: compact header, panes don't collapse under the add-pane button */
+.show-sm { display: none; }
+@media (max-width: 720px) {
+  .hide-sm { display: none; }
+  .show-sm { display: inline; }
+  .layout > .bar .topright__signout { display: none; }
+  .layout main { overflow-y: auto; }
+  .layout main .panes { flex: none; }
+  .layout main .add-pane { flex: none; }
+}

@@ -222,7 +222,7 @@ function TopRight() {
         <span className="avatar" style={{ background: me?.profile?.color }}>{me?.profile?.name[0]?.toUpperCase()}</span>
         <span className="me__name">{me?.profile?.name}</span>
       </a>
-      <button className="ghost" onClick={() => signOut()}>Sign out</button>
+      <button className="ghost topright__signout" onClick={() => signOut()}>Sign out</button>
     </div>
   );
 }
@@ -358,6 +358,7 @@ function Join({ code }: { code: string }) {
 }
 
 function Settings() {
+  const { signOut } = useAuthActions();
   const me = useQuery(api.profile.me);
   const update = useMutation(api.profile.update);
   const startConnect = useMutation(api.profile.startConnect);
@@ -473,6 +474,10 @@ function Settings() {
                 aria-label={c} onClick={() => update({ color: c })} />
             ))}
           </div>
+        </section>
+        <section>
+          <h3>Account</h3>
+          <button className="btn btn--sm" onClick={() => signOut()}>Sign out</button>
         </section>
         {saved && <p className="ok" role="status">{saved}</p>}
       </main>
@@ -620,7 +625,7 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
           }}>
-            {copied ? "Link copied" : "Copy share link"}
+            {copied ? "Link copied" : <><span className="hide-sm">Copy share link</span><span className="show-sm">Share</span></>}
           </button>
         )}
         <div className="people" aria-label="People here now">

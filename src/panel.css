@@ -320,3 +320,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="tab"]:focus-v
   .react-add.open { display: inline-flex; position: static; opacity: 1; pointer-events: auto; box-shadow: none; }
 }
 @media (hover: none) { .reacts .react { min-height: 0; } .react-toggle { width: 26px; height: 24px; justify-content: center; padding: 0; } }
+
+/* Mobile editor header: drop the "last change" note, let controls wrap */
+@media (max-width: 720px) {
+  .editor > .pane-head { flex-wrap: wrap; row-gap: 6px; }
+  .editor > .pane-head > .dim { display: none; }
+  .editor > .pane-head > strong { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .editor > .pane-head .seg { order: 5; }
+}

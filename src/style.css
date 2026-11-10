@@ -415,6 +415,23 @@ aside { border-right: var(--rule); overflow: auto; background: var(--color-paper
 .billed { margin-left: 8px; font-family: var(--font-mono); font-size: var(--text-2xs); letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-muted); border: var(--rule); padding: 1px 6px; border-radius: 4px; white-space: nowrap; }
 .ev { margin: 0; padding: 6px 12px; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); font-size: 12.5px; border-radius: var(--radius-sm); }
 .ev.message { font-family: var(--font-body); font-size: var(--text-sm); color: var(--color-ink-2); line-height: 1.55; padding: 4px 2px; }
+.md { white-space: normal; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md p, .md ul, .md ol, .md pre, .md blockquote, .md table { margin: 0 0 0.6em; }
+.md ul, .md ol { padding-left: 1.3em; }
+.md li { margin: 0.15em 0; }
+.md h1, .md h2, .md h3, .md h4 { font-size: var(--text-sm); font-weight: 650; color: var(--color-ink); margin: 0.9em 0 0.35em; }
+.md h1, .md h2 { font-size: 1.02rem; }
+.md code { font-family: var(--font-mono); font-size: 0.86em; background: var(--color-paper-2); border: var(--rule); border-radius: 4px; padding: 0.05em 0.35em; color: var(--color-ink); }
+.md pre { background: var(--color-graphite); color: var(--color-on-graphite); border-radius: var(--radius-sm); padding: 10px 12px; overflow: auto; }
+.md pre code { background: none; border: 0; padding: 0; color: inherit; font-size: 12.5px; }
+.md a { color: var(--color-accent); text-decoration: underline; text-underline-offset: 2px; }
+.md blockquote { border-left: 3px solid var(--color-rule-2); padding-left: 10px; color: var(--color-muted); }
+.md table { border-collapse: collapse; font-size: var(--text-xs); }
+.md th, .md td { border: var(--rule); padding: 4px 8px; text-align: left; }
+.md strong { color: var(--color-ink); }
+.md hr { border: 0; border-top: var(--rule); margin: 0.8em 0; }
 .ev.command { background: var(--color-graphite); color: var(--color-on-graphite); max-height: 240px; overflow: auto; }
 .ev.file { color: var(--color-ok-ink); padding: 2px 2px; }
 .ev.error { color: var(--color-danger-ink); background: var(--color-danger-soft); }

@@ -1,3 +1,4 @@
+import { renderMarkdown, tidyPaths } from "./markdown";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
@@ -622,9 +623,11 @@ function Pane({
               e.kind === "todo" ? (
                 // Only the newest todo snapshot of a run is shown.
                 r.events.slice(i + 1).some((x) => x.kind === "todo") ? null : <TodoCard key={e._id} text={e.text} live={r.status === "running"} />
+              ) : e.kind === "message" ? (
+                <div key={e._id} className="ev message md" dangerouslySetInnerHTML={{ __html: renderMarkdown(e.text) }} />
               ) : (
                 <pre key={e._id} className={`ev ${e.kind}`}>
-                  {e.text}
+                  {tidyPaths(e.text)}
                 </pre>
               ),
             )}

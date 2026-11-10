@@ -148,7 +148,8 @@ async function runOne(run, job) {
   const prompt =
     `[Tandem shared workspace. Prompt from ${run.author}. Other people and agents may be ` +
     `editing files in this directory at the same time, so re-read files before editing them. ` +
-    `Keep all work inside the current directory.]\n\n` +
+    `Keep all work inside the current directory, and refer to files by paths relative to it ` +
+    `(never mention the absolute directory path). Format replies in Markdown.]\n\n` +
     (run.steer
       ? `[${run.author} interrupted your previous turn to steer you. Your last tool call may not have ` +
         `finished; check before assuming it ran. Adjust course using this message:]\n\n`

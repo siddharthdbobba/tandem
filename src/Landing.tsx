@@ -20,7 +20,7 @@ export default function Landing() {
             <p className="eyebrow"><span className="eyebrow__tick" aria-hidden="true" />For trips, projects and side quests</p>
             <h1 className="lp-hero__title">Your group&apos;s shared AI workspace.</h1>
             <p className="lp-hero__lede">Plan the trip, finish the project, build the thing, together. The AI researches, writes and builds while everyone watches and chimes in. It runs on the Claude or ChatGPT plan you already have.</p>
-            <div className="lp-hero__ctas"><a href="#/signup" className="btn btn--primary btn--lg">Start a workspace, it&apos;s free</a><a href="#how-it-works" className="textlink">See how it works</a></div>
+            <div className="lp-hero__ctas"><a href="#/signup" className="btn btn--primary btn--lg">Start a workspace, it&apos;s free</a><a href="#how-it-works" className="textlink" onClick={(e) => { e.preventDefault(); document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" }); }}>See how it works</a></div>
           </div>
           <WorkspaceMock />
         </section>

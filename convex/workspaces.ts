@@ -219,6 +219,22 @@ export const busy = query({
   },
 });
 
+// The most recently finished run in this workspace (for "AI finished" notifications).
+export const lastFinished = query({
+  args: { workspaceId: v.id("workspaces"), code: v.optional(v.string()) },
+  handler: async (ctx, { workspaceId, code }) => {
+    await requireReader(ctx, workspaceId, code);
+    const panes = await ctx.db.query("panes").withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId)).collect();
+    let best: { _id: string; finishedAt: number; author: string; prompt: string; status: string } | null = null;
+    for (const p of panes) {
+      const r = await ctx.db.query("runs").withIndex("by_pane", (q) => q.eq("paneId", p._id)).order("desc").first();
+      if (r?.finishedAt && (r.status === "done" || r.status === "error") && (!best || r.finishedAt > best.finishedAt))
+        best = { _id: r._id, finishedAt: r.finishedAt, author: r.author, prompt: r.prompt.slice(0, 120), status: r.status };
+    }
+    return best;
+  },
+});
+
 export const addPane = mutation({
   args: { workspaceId: v.id("workspaces"), title: v.string() },
   handler: async (ctx, { workspaceId, title }) => {

@@ -99,7 +99,7 @@ try {
   });
 
   await test("file edit by alice shows live in bob's open editor", async () => {
-    const open = (b) => b.js("[...document.querySelectorAll('.file')].find(f=>f.textContent.startsWith('shared.txt')).click(), true");
+    const open = (b) => b.js("[...document.querySelectorAll('.file')].find(f=>f.querySelector('.file__name').textContent.startsWith('shared.txt')).click(), true");
     await until(async () => (await B.js("!!document.querySelector('.file')")), 10000, "tree");
     await open(A); await open(B);
     await until(async () => (await B.js(cmText)) === "v1", 10000, "bob sees v1");
@@ -113,7 +113,7 @@ try {
   });
 
   await test("bob's unsaved draft is not clobbered by alice's save", async () => {
-    const open = (b) => b.js("[...document.querySelectorAll('.file')].find(f=>f.textContent.startsWith('shared.txt')).click(), true");
+    const open = (b) => b.js("[...document.querySelectorAll('.file')].find(f=>f.querySelector('.file__name').textContent.startsWith('shared.txt')).click(), true");
     await open(A); await open(B);
     await sleep(1000);
     await B.js(cmType("bob draft"));
@@ -159,7 +159,7 @@ try {
       assert.equal(await C.js("!!document.querySelector('.upload-btn')"), false, "no upload");
       assert.equal(await C.js("document.querySelector('.viewing-pill')?.textContent"), "View only");
       // Opening a file is read-only too.
-      await C.js("[...document.querySelectorAll('.file')].find(f=>f.textContent.startsWith('shared.txt')).click(), true");
+      await C.js("[...document.querySelectorAll('.file')].find(f=>f.querySelector('.file__name').textContent.startsWith('shared.txt')).click(), true");
       await until(async () => await C.js(cmReadOnly), 10000, "read-only editor");
       await C.js("[...document.querySelectorAll('.editor button')].find(b=>b.textContent.includes('panes')).click(), true");
       // Sign up from the viewer, then land in the workspace as a member.
@@ -200,7 +200,7 @@ try {
     const disk = await sh(`sha256sum /srv/tandem/workspaces/${wsId}/pic-${id}.png | cut -c1-64`);
     assert.equal(disk, png.hash);
     // Bob opens each in the viewer.
-    const open = (n) => B.js(`[...document.querySelectorAll('.file')].find(f=>f.textContent.startsWith('${n}')).click(), true`);
+    const open = (n) => B.js(`[...document.querySelectorAll('.file')].find(f=>f.querySelector('.file__name').textContent.startsWith('${n}')).click(), true`);
     const back = () => B.js("[...document.querySelectorAll('.editor button')].find(b=>b.textContent.includes('panes')).click(), true");
     await open(`pic-${id}.png`);
     await until(async () => await B.js("(() => { const i = document.querySelector('.viewer--media img'); return !!i && i.complete && i.naturalWidth === 1; })()"), 15000, "image renders");

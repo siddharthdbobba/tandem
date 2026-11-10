@@ -39,7 +39,7 @@ await shoot("home.png");
 await js("document.querySelector('.tpl')?.click()"); await sleep(500); await shoot("home-picked.png");
 await send("Page.navigate", { url: `${UI}/#/w/${ws}` }); await sleep(4500);
 await shoot("workspace.png");
-await js("[...document.querySelectorAll('.file')].find(f=>f.textContent.startsWith('itinerary.md'))?.click()"); await sleep(1500);
+await js("[...document.querySelectorAll('.file')].find(f=>f.querySelector('.file__name').textContent.startsWith('itinerary.md'))?.click()"); await sleep(1500);
 await shoot("doc.png");
 await send("Page.navigate", { url: `${UI}/#/settings` }); await sleep(3000);
 await shoot("settings.png");

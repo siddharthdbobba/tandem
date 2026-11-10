@@ -52,3 +52,14 @@
 }
 aside.side { border-right: 0; background: var(--color-paper); overflow: hidden; }
 @media (max-width: 720px) { aside.side { max-height: none; border-bottom: 0; } }
+
+/* file rows */
+.file { display: flex; align-items: center; gap: 6px; position: relative; }
+.file__icon { font-size: 12px; width: 16px; text-align: center; flex: none; }
+.file__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file__actions { display: none; gap: 2px; margin-left: auto; }
+.file:hover .file__actions, .file:focus-within .file__actions { display: inline-flex; }
+.file__actions button { height: 22px !important; width: 22px; padding: 0 !important; font-size: 11px !important; border-radius: 5px !important; opacity: .7; }
+.file__actions button:hover { opacity: 1; background: var(--color-paper-3) !important; }
+.tpl, .tpl * { text-align: left; }
+.tpl { align-items: flex-start !important; }

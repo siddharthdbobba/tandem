@@ -4,6 +4,8 @@ import { RunChanges } from "./Changes";
 import { Editor } from "./Editor";
 import { ViewCtx, goJoin, useView } from "./view";
 import { SidePanel } from "./SidePanel";
+import Privacy from "./Privacy";
+import { Palette, type Command } from "./Palette";
 import { useEffect, useRef, useState } from "react";
 import { Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
@@ -67,6 +69,7 @@ export default function App() {
 function SignedOut() {
   const route = useRoute();
   if (route.kind === "join" && route.arg) return <Viewer code={route.arg} />;
+  if (route.kind === "privacy") return <Privacy />;
   if (route.kind === "signin") return <SignIn initial="signIn" />;
   if (route.kind === "signup") return <SignIn initial="signUp" />;
   return <Landing />;
@@ -184,6 +187,7 @@ function SignedIn() {
   }
   if (route.kind === "join") sessionStorage.removeItem("tandem-join");
   if (route.kind === "settings") return <Settings />;
+  if (route.kind === "privacy") return <Privacy />;
   if (route.kind === "join") return <Join code={route.arg} />;
   if (route.kind === "w" && route.arg) return <Workspace id={route.arg as Id<"workspaces">} />;
   return <Home />;
@@ -493,6 +497,28 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
     if (panel === "chat" && lastAt > seen) { setSeen(lastAt); localStorage.setItem(seenKey, String(lastAt)); }
   }, [panel, lastAt, seen, seenKey]);
   const unread = msgs?.filter((m) => m.at > seen && m.userId !== me?.userId).length ?? 0;
+
+  // Tab title shows activity; a desktop notification fires when the AI finishes while you're away.
+  const lastDone = useQuery(api.workspaces.lastFinished, { workspaceId: id, code });
+  const firstDone = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (lastDone === undefined) return;
+    const key = lastDone?._id ?? null;
+    if (firstDone.current === undefined) { firstDone.current = key; return; } // ignore what was already done
+    if (!lastDone || key === firstDone.current) return;
+    firstDone.current = key;
+    if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+      new Notification(lastDone.status === "done" ? "The AI finished" : "The AI hit a problem", {
+        body: `${ws?.name ?? "Tandem"}: ${lastDone.prompt}`,
+        tag: `tandem-${id}`,
+      });
+    }
+  }, [lastDone, id, ws?.name]);
+  useEffect(() => {
+    const base = ws?.name ? `${ws.name} · Tandem` : "Tandem";
+    document.title = busy ? `● ${base}` : unread ? `(${unread}) ${base}` : base;
+    return () => { document.title = "Tandem"; };
+  }, [busy, unread, ws?.name]);
   const [sidebar, setSidebar] = useState(() => localStorage.getItem("tandem-sidebar") !== "0");
   const toggleSidebar = () => {
     setSidebar((s) => {
@@ -500,12 +526,17 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
       return !s;
     });
   };
-  // Cmd/Ctrl+B toggles the file sidebar, like most editors.
+  // Cmd/Ctrl+B toggles the file sidebar; Cmd/Ctrl+K opens the command palette.
+  const [palette, setPalette] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
         e.preventDefault();
         toggleSidebar();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPalette((p) => !p);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -524,6 +555,20 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
 
   if (ws === null) return <div className="loading">Workspace not found. <a href="#/" className="textlink">Back to your workspaces</a></div>;
   const myId = me?.userId;
+  const tree = useQuery(api.files.tree, { workspaceId: id, code });
+  const shareLink = ws?.inviteCode ? `${location.origin}${location.pathname}#/join/${ws.inviteCode}` : "";
+  const commands: Command[] = [
+    ...(readOnly ? [] : [
+      { id: "pane", group: "Workspace", label: "New prompt pane", run: () => addPane({ workspaceId: id, title: `Agent ${(panes?.length ?? 0) + 1}` }) },
+      { id: "share", group: "Workspace", label: "Copy share link", run: () => navigator.clipboard.writeText(shareLink) },
+    ]),
+    { id: "chat", group: "Workspace", label: "Open team chat", run: () => setPanel("chat") },
+    { id: "settings", group: "Workspace", label: "Workspace settings (name, AI instructions, people)", run: () => setPanel("settings") },
+    { id: "files", group: "Workspace", label: "Toggle file sidebar", hint: "⌘B", run: toggleSidebar },
+    ...(readOnly ? [] : [{ id: "models", group: "Account", label: "Connect Claude or ChatGPT / default model", run: () => { location.hash = "/settings"; } }]),
+    { id: "home", group: "Account", label: "All workspaces", run: () => { location.hash = "/"; } },
+    ...(tree ?? []).map((f) => ({ id: `f:${f.path}`, group: "Files", label: f.path, run: () => setOpenFile(f.path) })),
+  ];
 
   return (
     <div className={`layout ${sidebar ? "" : "layout--nosidebar"} ${panel ? "layout--panel" : ""}`}>
@@ -600,6 +645,7 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
           </>
         )}
       </main>
+      <Palette open={palette} onClose={() => setPalette(false)} commands={commands} />
       {panel && (
         <SidePanel workspaceId={id} tab={panel} setTab={(t) => setPanel(t)} onClose={() => setPanel(null)} unread={unread} />
       )}
@@ -774,6 +820,8 @@ function Pane({
             ...(pick.provider ? { provider: pick.provider, model: pick.model || undefined } : {}),
             ...(pick.effort ? { effort: pick.effort } : {}),
           };
+          // First prompt: ask once if we can ping you when the AI finishes.
+          if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {});
           // Mid-run, Enter steers: stop the agent and redirect it. "Queue" waits instead.
           const queue = (e.nativeEvent as SubmitEvent).submitter?.dataset.queue === "1";
           if (live && !queue) steer({ runId: live._id, ...opts });
@@ -914,6 +962,18 @@ function TodoCard({ text, live }: { text: string; live: boolean }) {
   );
 }
 
+// A small glyph per file type so the tree is scannable.
+const fileIcon = (name: string) => {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  if (["md", "txt"].includes(ext)) return "📝";
+  if (ext === "pdf") return "📕";
+  if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext)) return "🖼️";
+  if (["html", "htm"].includes(ext)) return "🌐";
+  if (["csv", "xlsx", "json"].includes(ext)) return "📊";
+  if (["js", "ts", "tsx", "jsx", "py", "css", "mjs"].includes(ext)) return "⌨️";
+  return "📄";
+};
+
 function FileTree({
   workspaceId,
   open,
@@ -927,6 +987,8 @@ function FileTree({
   const files = useQuery(api.files.tree, { workspaceId, code });
   const save = useMutation(api.files.save);
   const uploadUrl = useMutation(api.files.uploadUrl);
+  const move = useMutation(api.files.move);
+  const removeFile = useMutation(api.files.remove);
   const saveBinary = useMutation(api.files.saveBinary);
   const [drag, setDrag] = useState(false);
   const [upErr, setUpErr] = useState("");
@@ -987,16 +1049,26 @@ function FileTree({
       {sorted.length === 0 && <p className="dim">Empty. Drop files here, or let the agent write some.</p>}
       {sorted.map((f) => {
         const depth = f.path.split("/").length - 1;
+        const name = f.path.split("/").pop()!;
         return (
-          <div
-            key={f._id}
-            className={`file ${open === f.path ? "active" : ""}`}
-            style={{ paddingLeft: 8 + depth * 12 }}
-            onClick={() => onOpen(f.path)}
-            title={`last change: ${f.updatedBy}`}
-          >
-            {f.path.split("/").pop()}
-            {depth > 0 && <span className="dim"> {f.path.split("/").slice(0, -1).join("/")}/</span>}
+          <div key={f._id} className={`file ${open === f.path ? "active" : ""}`} style={{ paddingLeft: 8 + depth * 12 }}
+            onClick={() => onOpen(f.path)} title={`last change: ${f.updatedBy}`}>
+            <span className="file__icon" aria-hidden="true">{fileIcon(name)}</span>
+            <span className="file__name">{name}{depth > 0 && <span className="dim"> {f.path.split("/").slice(0, -1).join("/")}/</span>}</span>
+            {!readOnly && (
+              <span className="file__actions" onClick={(e) => e.stopPropagation()}>
+                <button className="ghost" title="Rename" aria-label={`Rename ${name}`} onClick={async () => {
+                  const to = prompt("Rename to", f.path)?.trim();
+                  if (!to || to === f.path) return;
+                  try { await move({ workspaceId, from: f.path, to }); if (open === f.path) onOpen(to); }
+                  catch (e) { setUpErr(String((e as Error).message).split("\n")[0].replace(/^.*Error: /, "")); }
+                }}>✎</button>
+                <button className="ghost" title="Delete" aria-label={`Delete ${name}`} onClick={async () => {
+                  if (!confirm(`Delete ${f.path} for everyone?`)) return;
+                  await removeFile({ workspaceId, path: f.path });
+                }}>🗑</button>
+              </span>
+            )}
           </div>
         );
       })}

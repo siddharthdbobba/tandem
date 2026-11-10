@@ -349,3 +349,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="tab"]:focus-v
 .sheet__meta { margin-top: 8px; font-size: var(--text-xs); }
 .viewer.viewer--table { display: block; padding: 20px 24px; }
 .md table { margin: 0.8em 0 1em; } .md ul + table, .md ol + table { margin-top: 1em; }
+
+/* Phones: compact 2-column templates (icon + title only) so the list fits on one screen */
+@media (max-width: 420px) {
+  .tpl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .tpl-grid .tpl { padding: 12px !important; gap: 4px; }
+  .tpl-grid .tpl .tpl__blurb { display: none; }
+  .tpl-grid .tpl:last-child .tpl__blurb { display: inline; }
+}

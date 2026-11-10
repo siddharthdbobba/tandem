@@ -683,6 +683,20 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
       });
     }
   }, [lastDone, id, ws?.name]);
+  // Someone @mentions you in chat while this tab is in the background: notify.
+  const lastMsgId = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (!msgs || !me?.profile) return;
+    const last = msgs[msgs.length - 1];
+    if (lastMsgId.current === undefined) { lastMsgId.current = last?._id ?? null; return; }
+    if (!last || last._id === lastMsgId.current) return;
+    lastMsgId.current = last._id;
+    const first = me.profile.name.split(" ")[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const mentioned = last.userId !== me.userId && new RegExp(`@${first}\\b`, "i").test(last.text);
+    if (mentioned && document.hidden && "Notification" in window && Notification.permission === "granted") {
+      new Notification(`${last.author} mentioned you`, { body: `${ws?.name ?? "Tandem"}: ${last.text.slice(0, 140)}`, tag: `tandem-chat-${id}` });
+    }
+  }, [msgs, me, id, ws?.name]);
   useEffect(() => {
     const base = ws?.name ? `${ws.name} · Tandem` : "Tandem";
     document.title = busy ? `● ${base}` : unread ? `(${unread}) ${base}` : base;

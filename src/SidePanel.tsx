@@ -54,6 +54,14 @@ function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
   const [text, setText] = useState("");
   const [err, setErr] = useState("");
   const end = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
+  // Reply: quote the first line of a message, mention its author, focus the box.
+  const reply = (author: string, msg: string) => {
+    const line = msg.replace(/^\/poll\s*/, "").split("\n").find((l) => l.trim() && !l.startsWith(">"))?.trim() ?? "";
+    const quote = line.length > 120 ? `${line.slice(0, 117)}…` : line;
+    setText(`> **${author}:** ${quote}\n\n@${author.split(" ")[0]} `);
+    setTimeout(() => { const t = box.current; if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } }, 0);
+  };
   const members = useQuery(api.workspaces.members, { workspaceId, code });
   const names = (members ?? []).map((x) => x.name);
   const myName = me?.profile?.name ?? "";
@@ -121,6 +129,8 @@ function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
                         <button key={e} type="button" className="react react--pick ghost" aria-label={`React ${e}`}
                           onClick={() => react({ messageId: m._id, emoji: e })}>{e}</button>
                       ))}
+                      <button type="button" className="react react--pick ghost" aria-label={`Reply to ${m.author}`} title="Reply"
+                        onClick={() => reply(m.author, m.poll ? m.poll.question : m.text)}>↩</button>
                     </span>
                   )}
                 </div>
@@ -149,7 +159,7 @@ function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
               ))}
             </div>
           )}
-          <textarea rows={1} value={text} placeholder="Message the group, or @ai…" aria-label="Message the group"
+          <textarea ref={box} rows={1} value={text} placeholder="Message the group, or @ai…" aria-label="Message the group"
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
           <button disabled={!text.trim()} aria-label="Send message">↑</button>

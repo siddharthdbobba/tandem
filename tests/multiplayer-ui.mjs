@@ -276,6 +276,12 @@ try {
     await A.js("document.querySelector('.chat__log .react:not(.react--pick)').click(), true");
     await until(async () => /👍\s*2/.test(await B.js("document.querySelector('.chat__log .react:not(.react--pick)')?.textContent ?? ''")), 8000, "count 2 for bob");
     assert.equal(await A.js("document.querySelector('.chat__log .react.mine')?.title"), "bob, alice");
+    // Bob replies: the box gets a quote + @mention; once sent, alice sees it highlighted for her.
+    await B.js("document.querySelector('.chat__log [aria-label=\"Reply to alice\"]').click(), true");
+    assert.equal(await B.js("document.querySelector('.chat__box textarea').value"), "> **alice:** who's bringing the stove?\n\n@alice ");
+    await B.js(typeInto("document.querySelector('.chat__box textarea')", "> **alice:** who's bringing the stove?\n\n@alice I've got it"));
+    await B.js("document.querySelector('.chat__box').requestSubmit(), true");
+    await until(async () => await A.js("!!document.querySelector('.chat__log .mentions-me blockquote')"), 8000, "alice sees reply with quote");
     await B.js("[...document.querySelectorAll('.side__tabs button')].find(b=>b.textContent==='Workspace').click(), true");
     await until(async () => /alice/.test(await B.js("document.querySelector('.members')?.innerText ?? ''")), 8000, "members list");
     await B.js("document.querySelector('.side__close').click(), true");

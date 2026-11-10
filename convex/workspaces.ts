@@ -34,7 +34,7 @@ export const list = query({
             ? { at: run._creationTime, text: `${run.author} asked the AI: ${run.prompt}`.slice(0, 90) }
             : null;
       const people = (await ctx.db.query("members").withIndex("by_workspace_user", (q) => q.eq("workspaceId", w._id)).collect()).length;
-      out.push({ _id: w._id, name: w.name, template: w.template, owner: (await getProfile(ctx, w.ownerId))?.name ?? "?", activity, people, at: activity?.at ?? w._creationTime });
+      out.push({ _id: w._id, name: w.name, template: w.template, owner: (await getProfile(ctx, w.ownerId))?.name ?? "?", mine: w.ownerId === userId, inviteCode: w.inviteCode, activity, people, at: activity?.at ?? w._creationTime });
     }
     return out.sort((a, b) => b.at - a.at);
   },

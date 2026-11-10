@@ -36,6 +36,8 @@ await send("Page.navigate", { url: `${UI}/#/signin` }); await sleep(3000);
 await js(`(() => { const set = (s, v) => { const el = document.querySelector(s); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); }; set('input[name=email]', '${email}'); set('input[name=password]', '${pw}'); document.querySelector('form.stack').requestSubmit(); })()`);
 await sleep(4000);
 await shoot("home.png");
+await js("document.querySelector('.rowmenu__btn')?.click()"); await sleep(300); await shoot("home-menu.png");
+await js("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))");
 await shoot("home-m.png", 390, 844);
 await js("document.querySelector('.tpl')?.click()"); await sleep(500); await shoot("home-picked.png");
 await send("Page.navigate", { url: `${UI}/#/w/${ws}` }); await sleep(4500);

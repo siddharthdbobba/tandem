@@ -340,6 +340,22 @@ try {
     await until(async () => !(await A.js("!!document.querySelector('.away')")), 3000, "away banner dismissed");
   });
 
+  await test("Home row menu: bob (member) sees Leave, alice (owner) sees Delete; rename via menu", async () => {
+    await B.send("Page.navigate", { url: `${UI}/#/` });
+    await until(async () => await B.js("!!document.querySelector('.rowmenu__btn')"), 15000, "bob home rows");
+    await B.js(`[...document.querySelectorAll('.wslist > li')].find(li=>li.textContent.includes('multiplayer-ui')).querySelector('.rowmenu__btn').click(), true`);
+    const items = await B.js("[...document.querySelectorAll('.rowmenu__list button')].map(b=>b.textContent).join('|')");
+    assert.equal(items, "Rename|Copy invite link|Leave");
+    await B.js("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })), true");
+    await A.send("Page.navigate", { url: `${UI}/#/` });
+    await until(async () => await A.js("!!document.querySelector('.rowmenu__btn')"), 15000, "alice home rows");
+    await A.js(`window.prompt = () => 'multiplayer-ui renamed'; [...document.querySelectorAll('.wslist > li')].find(li=>li.textContent.includes('multiplayer-ui')).querySelector('.rowmenu__btn').click(), true`);
+    assert.match(await A.js("[...document.querySelectorAll('.rowmenu__list button')].map(b=>b.textContent).join('|')"), /Delete/);
+    await A.js("[...document.querySelectorAll('.rowmenu__list button')].find(b=>b.textContent==='Rename').click(), true");
+    await until(async () => /multiplayer-ui renamed/.test(await B.js("document.querySelector('.wslist')?.innerText ?? ''")), 8000, "bob sees rename live");
+    await alice.mutation(api.workspaces.rename, { workspaceId: wsId, name: "multiplayer-ui" });
+  });
+
   await test("no page errors in either browser", async () => {
     assert.deepEqual(await A.js("window.__errs"), []);
     assert.deepEqual(await B.js("window.__errs"), []);

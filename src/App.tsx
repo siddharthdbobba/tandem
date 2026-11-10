@@ -336,12 +336,62 @@ function Home() {
                     </span>
                     <span className="wslist__go" aria-hidden="true">→</span>
                   </a>
+                  <RowMenu w={w} />
                 </li>
               ))}
             </ul>
           )}
         </section>
       </main>
+    </div>
+  );
+}
+
+// "⋯" on a Home row: rename, copy invite link, leave (members) or delete (owner).
+function RowMenu({ w }: { w: { _id: Id<"workspaces">; name: string; mine: boolean; inviteCode: string } }) {
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState("");
+  const rename = useMutation(api.workspaces.rename);
+  const leave = useMutation(api.workspaces.leave);
+  const remove = useMutation(api.workspaces.remove);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  const act = async (fn: () => Promise<unknown>) => {
+    setOpen(false);
+    try { await fn(); } catch (e) { setNote(String((e as Error).message).split("\n")[0].replace(/^.*Error: /, "")); }
+  };
+  return (
+    <div className="rowmenu" ref={ref}>
+      <button className="ghost rowmenu__btn" aria-label={`Options for ${w.name}`} aria-expanded={open} onClick={() => setOpen(!open)}>⋯</button>
+      {open && (
+        <div className="rowmenu__list" role="menu">
+          <button className="ghost" role="menuitem" onClick={() => act(async () => {
+            const name = prompt("Rename workspace", w.name)?.trim();
+            if (name && name !== w.name) await rename({ workspaceId: w._id, name });
+          })}>Rename</button>
+          <button className="ghost" role="menuitem" onClick={() => act(async () => {
+            await navigator.clipboard.writeText(`${location.origin}${location.pathname}#/join/${w.inviteCode}`);
+            setNote("Link copied"); setTimeout(() => setNote(""), 1500);
+          })}>Copy invite link</button>
+          {w.mine ? (
+            <button className="ghost rowmenu__danger" role="menuitem" onClick={() => act(async () => {
+              if (confirm(`Delete "${w.name}" for everyone? Files and chat are removed.`)) await remove({ workspaceId: w._id });
+            })}>Delete…</button>
+          ) : (
+            <button className="ghost rowmenu__danger" role="menuitem" onClick={() => act(async () => {
+              if (confirm(`Leave "${w.name}"? You can rejoin with the invite link.`)) await leave({ workspaceId: w._id });
+            })}>Leave</button>
+          )}
+        </div>
+      )}
+      {note && <span className="rowmenu__note" role="status">{note}</span>}
     </div>
   );
 }

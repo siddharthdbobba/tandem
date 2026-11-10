@@ -258,3 +258,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="tab"]:focus-v
 .invite__lede { color: var(--color-muted); line-height: 1.55; margin: 4px 0 8px; }
 .invite__card .btn--lg { width: 100%; justify-content: center; }
 .invite__peek { margin-top: 4px; color: var(--color-muted); font-size: var(--text-sm); }
+
+/* Home row "⋯" menu */
+.wslist > li { position: relative; }
+.rowmenu { position: absolute; top: 50%; right: 44px; transform: translateY(-50%); }
+.rowmenu__btn { width: 30px; height: 30px; padding: 0; border-radius: 8px; color: var(--color-muted); font-size: 18px; line-height: 1; opacity: 0; }
+.wslist > li:hover .rowmenu__btn, .rowmenu__btn:focus-visible, .rowmenu__btn[aria-expanded="true"] { opacity: 1; }
+@media (hover: none) { .rowmenu__btn { opacity: 1; } }
+.rowmenu__list { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; min-width: 170px; display: flex; flex-direction: column; padding: 4px; border: 1px solid var(--color-rule); border-radius: 10px; background: var(--color-paper); box-shadow: 0 8px 24px rgb(0 0 0 / 0.1); }
+.rowmenu__list button { justify-content: flex-start; text-align: left; height: 34px; padding: 0 10px; border-radius: 7px; font-size: var(--text-sm); color: var(--color-ink); }
+.rowmenu__list .rowmenu__danger { color: var(--color-danger-ink, #b4232a); }
+.rowmenu__note { position: absolute; right: 36px; top: 50%; transform: translateY(-50%); white-space: nowrap; font-size: var(--text-xs); color: var(--color-muted); background: var(--color-paper); padding: 2px 6px; border-radius: 6px; }
+.wslist__row { padding-right: 84px; position: relative; } .wslist__go { position: absolute; right: 18px; }
+.wslist > li:has(.rowmenu__list) { z-index: 5; }

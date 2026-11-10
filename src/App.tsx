@@ -701,8 +701,14 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
         {readOnly ? (
           <span className="viewing-pill">View only</span>
         ) : (
-          <button className="btn btn--ghost btn--sm" onClick={() => {
-            navigator.clipboard.writeText(`${location.origin}${location.pathname}#/join/${ws?.inviteCode}`);
+          <button className="btn btn--ghost btn--sm" onClick={async () => {
+            const url = `${location.origin}${location.pathname}#/join/${ws?.inviteCode}`;
+            // Phones/tablets: open the system share sheet (Messages, WhatsApp...). Desktop: copy.
+            if (navigator.share && matchMedia("(pointer: coarse)").matches) {
+              try { await navigator.share({ title: `Join ${ws?.name} on Tandem`, text: `Join "${ws?.name}" on Tandem`, url }); return; }
+              catch (e) { if ((e as Error).name === "AbortError") return; /* share failed: copy instead */ }
+            }
+            navigator.clipboard.writeText(url);
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
           }}>

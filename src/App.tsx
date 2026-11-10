@@ -1061,7 +1061,10 @@ function FileTree({
       }
     }
   };
-  const sorted = [...(files ?? [])].sort((a, b) => a.path.localeCompare(b.path));
+  const all = [...(files ?? [])].sort((a, b) => a.path.localeCompare(b.path));
+  const [filter, setFilter] = useState("");
+  const q = filter.trim().toLowerCase();
+  const sorted = q ? all.filter((f) => f.path.toLowerCase().includes(q)) : all;
   return (
     <div className={`tree ${drag ? "tree--drop" : ""}`}
       onDragOver={(e) => { if (readOnly) return; e.preventDefault(); setDrag(true); }}
@@ -1087,7 +1090,16 @@ function FileTree({
       </div>
       {upErr && <p className="err tree__err">{upErr}</p>}
       {uploading > 0 && <p className="dim tree__err"><span className="spin" /> Uploading {uploading}…</p>}
-      {sorted.length === 0 && <p className="dim">Empty. Drop files here, or let the agent write some.</p>}
+      {all.length >= 8 && (
+        <input className="tree__filter" type="search" value={filter} placeholder="Find a file" aria-label="Find a file"
+          onChange={(e) => setFilter(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && sorted[0]) onOpen(sorted[0].path);
+            if (e.key === "Escape") setFilter("");
+          }} />
+      )}
+      {all.length === 0 && <p className="dim">Empty. Drop files here, or let the agent write some.</p>}
+      {all.length > 0 && sorted.length === 0 && <p className="dim tree__err">No files match “{filter}”.</p>}
       {sorted.map((f) => {
         const depth = f.path.split("/").length - 1;
         const name = f.path.split("/").pop()!;

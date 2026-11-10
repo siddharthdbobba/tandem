@@ -201,3 +201,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="tab"]:focus-v
 .lp-cta > p { color: var(--color-muted); line-height: 1.6; max-width: 52ch; }
 .lp-cta__fine { font-size: var(--text-sm); margin-top: var(--space-sm); }
 .lp-cta__fine a { color: var(--color-accent); font-weight: 500; }
+
+/* File tree filter (shows once a workspace has 8+ files) */
+.tree__filter {
+  width: calc(100% - 2 * var(--space-sm)); margin: 2px var(--space-sm) var(--space-xs);
+  height: 28px; padding: 0 8px; font: inherit; font-size: var(--text-xs);
+  border: 1px solid var(--color-rule); border-radius: var(--radius-sm); background: var(--color-paper);
+  color: var(--color-ink);
+}
+.tree__filter:focus { outline: 2px solid var(--color-focus); outline-offset: 0; border-color: transparent; }

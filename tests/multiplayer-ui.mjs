@@ -289,6 +289,18 @@ try {
     await A.js("document.querySelector('.side__close').click(), true");
   });
 
+  await test("file filter appears with many files and Enter opens the match", async () => {
+    for (const n of ["a", "b", "c", "d", "e", "f"]) await alice.mutation(api.files.save, { workspaceId: wsId, path: `extra-${n}.txt`, content: n });
+    await alice.mutation(api.files.save, { workspaceId: wsId, path: "zebra-plan.md", content: "# zebra" });
+    await until(async () => (await A.js("!!document.querySelector('.tree__filter')")), 10000, "filter shown");
+    await A.js(`(() => { const i = document.querySelector('.tree__filter'); i.focus();
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, 'zebra');
+      i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+    await until(async () => (await A.js("document.querySelectorAll('.file').length")) === 1, 5000, "filtered to 1");
+    await A.js("document.querySelector('.tree__filter').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })), true");
+    await until(async () => (await A.js("document.querySelector('.editor strong')?.textContent")) === "zebra-plan.md", 5000, "opened match");
+  });
+
   await test("no page errors in either browser", async () => {
     assert.deepEqual(await A.js("window.__errs"), []);
     assert.deepEqual(await B.js("window.__errs"), []);

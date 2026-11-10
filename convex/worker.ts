@@ -59,6 +59,7 @@ export const claim = mutation({
       provider,
       model: model ?? null,
       effort: run.effort ?? null,
+      autoPoke: profile.autoPoke ?? false,
       sessionId: resume,
     };
   },

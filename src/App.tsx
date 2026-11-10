@@ -409,6 +409,14 @@ function Settings() {
             {[...MODELS[p.provider as ProviderId], ...(p.model && !MODELS[p.provider as ProviderId].includes(p.model) ? [p.model] : [])]
               .map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
+          <label className="toggle">
+            <input type="checkbox" checked={!!p.autoPoke}
+              onChange={(e) => update({ autoPoke: e.target.checked }).then(() => flash(e.target.checked ? "Auto follow-up on" : "Auto follow-up off"))} />
+            <span>
+              <b>Auto follow-up</b>
+              <span className="dim">If the agent stops with its plan unfinished, nudge it to keep going (up to 3 times). Finishes more long tasks, but uses more of your subscription.</span>
+            </span>
+          </label>
         </section>
         {saved && <p className="ok" role="status">{saved}</p>}
       </main>

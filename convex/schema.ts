@@ -14,6 +14,7 @@ export default defineSchema({
     color: v.string(),
     provider: provider, // which of their subscriptions to run on
     model: v.optional(v.string()), // optional model override, e.g. claude-opus-4-6
+    autoPoke: v.optional(v.boolean()), // let jcode re-prompt the agent when todos are left open
     sandboxKey: v.string(), // stable id of their Linux sandbox user on the VM
   }).index("by_user", ["userId"]),
 

@@ -53,15 +53,22 @@ fi
 [ "${1:-}" = "jcode" ] || { echo "only jcode allowed" >&2; exit 2; }
 shift
 
-# Optional reasoning effort, passed by the worker. Whitelisted values only.
+# Optional flags, passed by the worker. Whitelisted values only.
 effort=""
-if [ "${1:-}" = "--effort" ]; then effort="${2:-}"; shift 2; fi
+poke=0
+while :; do
+  case "${1:-}" in
+    --effort) effort="${2:-}"; shift 2 ;;
+    --auto-poke) poke=1; shift ;;
+    *) break ;;
+  esac
+done
 case "$effort" in ""|low|medium|high|xhigh|max) ;; *) echo "bad effort" >&2; exit 2 ;; esac
 effort_env=()
 [ -n "$effort" ] && effort_env=(JCODE_ANTHROPIC_REASONING_EFFORT="$effort" JCODE_OPENAI_REASONING_EFFORT="$effort")
 
 exec setpriv --reuid="$user" --regid=tandem --init-groups --inh-caps=-all \
   env -i HOME="$home" JCODE_HOME="$home/.jcode" USER="$user" LOGNAME="$user" \
-  PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 JCODE_NO_TELEMETRY=1 JCODE_RUN_AUTO_POKE=0 \
+  PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 JCODE_NO_TELEMETRY=1 JCODE_RUN_AUTO_POKE=$poke \
   TERM=dumb TMPDIR="$home/tmp" "${effort_env[@]}" \
   bash -c 'umask 007; cd "$0" && exec /usr/local/bin/jcode "$@"' "$cwd_real" "$@"

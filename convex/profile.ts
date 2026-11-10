@@ -48,6 +48,7 @@ export const update = mutation({
     color: v.optional(v.string()),
     provider: v.optional(provider),
     model: v.optional(v.union(v.string(), v.null())),
+    autoPoke: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
@@ -63,6 +64,7 @@ export const update = mutation({
       patch.color = args.color;
     }
     if (args.provider !== undefined) patch.provider = args.provider;
+    if (args.autoPoke !== undefined) patch.autoPoke = args.autoPoke;
     if (args.model !== undefined) {
       const m = args.model?.trim();
       if (m && !/^[A-Za-z0-9._:\-/]{1,80}$/.test(m)) throw new Error("bad model name");

@@ -417,6 +417,10 @@ aside { border-right: var(--rule); overflow: auto; background: var(--color-paper
 .prompt-box button { height: 38px; }
 .prompt-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; width: 150px; }
 .prompt-box--locked { align-items: center; gap: var(--space-sm); font-size: var(--text-sm); color: var(--color-ink-2); background: var(--color-accent-soft); }
+.toggle { display: flex !important; flex-direction: row !important; gap: 10px; align-items: flex-start; margin-top: var(--space-md); cursor: pointer; font-weight: 400 !important; }
+.toggle input { margin-top: 3px; accent-color: var(--color-accent); width: 16px; height: 16px; flex: none; }
+.toggle > span { display: flex; flex-direction: column; gap: 2px; font-size: var(--text-sm); }
+.toggle .dim { font-size: var(--text-xs); }
 .prompt-box--locked span { flex: 1; }
 .viewing-pill {
   font-family: var(--font-mono); font-size: var(--text-2xs); letter-spacing: 0.06em; text-transform: uppercase;

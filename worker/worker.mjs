@@ -23,6 +23,7 @@ const s = { secret: SECRET };
 
 const active = new Map(); // runId -> child process
 const snapshots = new Map(); // workspaceId -> Map(path -> content)
+const MAX_POKES = 3;
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
 const dirFor = (workspaceId) => {
@@ -127,8 +128,8 @@ client.onUpdate(api.worker.pendingWrites, s, async (files) => {
 // Linux user, with HOME/JCODE_HOME in that user's private directory. That is
 // what keeps one person's subscription tokens away from everyone else.
 const SANDBOX = process.env.TANDEM_AS ?? "/usr/local/sbin/tandem-as";
-function jcodeAs(sandboxKey, cwd, args, effort) {
-  const pre = effort ? ["--effort", effort] : [];
+function jcodeAs(sandboxKey, cwd, args, effort, autoPoke) {
+  const pre = [...(effort ? ["--effort", effort] : []), ...(autoPoke ? ["--auto-poke"] : [])];
   return spawn("sudo", ["-n", SANDBOX, sandboxKey, cwd, "--", "jcode", ...pre, ...args], {
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -158,7 +159,7 @@ async function runOne(run, job) {
     const g = spawn("sudo", ["-n", SANDBOX, job.sandboxKey, dir, "--grant"], { stdio: "ignore" });
     g.on("close", res);
   });
-  const child = jcodeAs(job.sandboxKey, dir, args, job.effort);
+  const child = jcodeAs(job.sandboxKey, dir, args, job.effort, job.autoPoke);
   active.set(run._id, child);
 
   // Stop the agent if anyone hits cancel.
@@ -173,6 +174,8 @@ async function runOne(run, job) {
   });
 
   const tr = translator(dir);
+  let pokes = 0;
+  let capped = false;
   let buf = "";
   let stderr = "";
   child.stdout.on("data", (chunk) => {
@@ -187,6 +190,13 @@ async function runOne(run, job) {
       } catch {
         continue;
       }
+      // Re-prompting is opt-in and capped so a stuck agent can't drain a subscription.
+      if (ev.type === "auto_poke" && ++pokes > MAX_POKES && !capped && !cancelled) {
+        capped = true;
+        emit("error", `Stopped after ${MAX_POKES} automatic follow-ups with todos still open. Send a prompt to continue.`);
+        child.kill("SIGTERM");
+        setTimeout(() => child.exitCode === null && child.kill("SIGKILL"), 10_000).unref();
+      }
       for (const e of tr.feed(ev)) {
         // Login problems get one friendly message at the end instead of jcode's raw text.
         if (e.kind === "error" && AUTH_ERR.test(e.text)) continue;
@@ -198,18 +208,19 @@ async function runOne(run, job) {
   child.stderr.on("data", (c) => (stderr = (stderr + c).slice(-2000)));
 
   const code = await new Promise((res) => child.on("close", res));
+  const ok = code === 0 || capped;
   unsub();
   for (const e of tr.end()) emit(e.kind, e.text);
   active.delete(run._id);
   const failed = tr.failed;
-  if (code !== 0 && !cancelled && !failed) emit("error", `agent exited ${code}\n${stderr.trim()}`);
+  if (!ok && !cancelled && !failed) emit("error", `agent exited ${code}\n${stderr.trim()}`);
   const why = failed ?? stderr;
-  if (code !== 0 && !cancelled && AUTH_ERR.test(why)) {
+  if (!ok && !cancelled && AUTH_ERR.test(why)) {
     emit("error", `${run.author}'s ${job.provider === "claude" ? "Claude" : "ChatGPT"} subscription isn't connected yet. Connect it in Settings, then send this again.`);
     await client.mutation(api.worker.setConnection, {
       ...s, sandboxKey: job.sandboxKey, provider: job.provider, status: "error", detail: clip(why, 280),
     }).catch(() => {});
-  } else if (code === 0) {
+  } else if (ok) {
     // A successful run proves the login works.
     await client.mutation(api.worker.setConnection, {
       ...s, sandboxKey: job.sandboxKey, provider: job.provider, status: "connected",
@@ -220,7 +231,7 @@ async function runOne(run, job) {
   await client.mutation(api.worker.finish, {
     ...s,
     runId: run._id,
-    status: code === 0 ? "done" : "error",
+    status: ok ? "done" : "error",
     sessionId: tr.sessionId ?? undefined,
   });
   log("finished", run._id, code);

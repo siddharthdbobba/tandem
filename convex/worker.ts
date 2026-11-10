@@ -428,3 +428,17 @@ export const lastSeen = query({
   args: {},
   handler: async (ctx) => (await ctx.db.query("workerStatus").first())?.seenAt ?? null,
 });
+
+// Which of these workspace ids still exist (the worker prunes folders of deleted ones).
+export const existingWorkspaces = query({
+  args: { secret: v.string(), ids: v.array(v.string()) },
+  handler: async (ctx, { secret, ids }) => {
+    check(secret);
+    const out: string[] = [];
+    for (const id of ids) {
+      const nid = ctx.db.normalizeId("workspaces", id);
+      if (nid && (await ctx.db.get(nid))) out.push(id);
+    }
+    return out;
+  },
+});

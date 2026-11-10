@@ -529,4 +529,22 @@ const ping = () => client.mutation(api.worker.ping, s).catch(() => {});
 ping();
 setInterval(ping, 20000);
 
+// Hourly: remove folders of workspaces that no longer exist in Convex.
+async function pruneDeleted() {
+  try {
+    const dirs = fs.readdirSync(ROOT).filter((d) => /^[a-z0-9]{20,40}$/.test(d));
+    for (let i = 0; i < dirs.length; i += 100) {
+      const batch = dirs.slice(i, i + 100);
+      const alive = new Set(await client.query(api.worker.existingWorkspaces, { ...s, ids: batch }));
+      for (const d of batch) {
+        if (alive.has(d)) continue;
+        fs.rmSync(path.join(ROOT, d), { recursive: true, force: true });
+        log("pruned deleted workspace dir", d);
+      }
+    }
+  } catch (e) { log("prune error", e); }
+}
+setTimeout(pruneDeleted, 60_000);
+setInterval(pruneDeleted, 60 * 60_000);
+
 log("tandem worker up", URL, ROOT);

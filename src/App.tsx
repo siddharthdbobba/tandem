@@ -485,9 +485,19 @@ function Settings() {
   const startConnect = useMutation(api.profile.startConnect);
   const submitCode = useMutation(api.profile.submitCode);
   const cancelConnect = useMutation(api.profile.cancelConnect);
+  const catalog = useQuery(api.connectors.catalog);
+  const connectors = useQuery(api.connectors.mine);
+  const addConnector = useMutation(api.connectors.add);
+  const submitConnectorCode = useMutation(api.connectors.submitCode);
+  const removeConnector = useMutation(api.connectors.remove);
   const [name, setName] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [saved, setSaved] = useState("");
+  const [tokens, setTokens] = useState<Record<string, string | undefined>>({});
+  const [codes, setCodes] = useState<Record<string, string>>({});
+  const [connectorError, setConnectorError] = useState("");
+  const [custom, setCustom] = useState({ label: "", url: "", token: "" });
+  const [showCustom, setShowCustom] = useState(false);
   if (!me?.profile) return null;
   const p = me.profile;
   const flow = me.flows[0];
@@ -578,6 +588,44 @@ function Settings() {
               <span className="dim">If the agent stops with its plan unfinished, nudge it to keep going (up to 3 times). Finishes more long tasks, but uses more of your subscription.</span>
             </span>
           </label>
+        </section>
+
+        <section>
+          <h3>Connected apps</h3>
+          <p className="dim">Give your AI access to your apps. Only your prompts can use them, never your teammates'.</p>
+          {catalog?.map((app) => {
+            const connection = connectors?.find((c) => c.name === app.id);
+            const changing = connection && ["adding", "submitting", "removing"].includes(connection.status);
+            const retry = () => addConnector(connection?.name === app.id ? { catalogId: app.id } : { catalogId: app.id });
+            return (
+              <div key={app.id} className="connector">
+                <span className="connector__icon" aria-hidden="true">{app.label[0]}</span>
+                <div className="connector__copy"><b>{app.label}</b><span className="dim">{app.blurb}</span></div>
+                {connection?.status === "connected" ? <><span className="badge connected">Connected · {connection.tools ?? 0} tools</span><button className="btn btn--ghost btn--sm" onClick={() => removeConnector({ id: connection._id })}>Disconnect</button></>
+                  : changing ? <span className="dim"><span className="spin" /> {connection.status === "submitting" ? "Finishing sign-in…" : connection.status === "removing" ? "Disconnecting…" : "Connecting…"}</span>
+                  : app.auth === "token" && !connection ? <button className="btn btn--primary btn--sm" onClick={() => setTokens((t) => ({ ...t, [app.id]: t[app.id] === undefined ? "" : undefined }))}>Connect</button>
+                  : <button className="btn btn--primary btn--sm" onClick={() => { setConnectorError(""); addConnector({ catalogId: app.id }).catch((e) => setConnectorError(e.message)); }}>{connection?.status === "error" ? "Try again" : "Connect"}</button>}
+                {app.auth === "token" && !connection && tokens[app.id] !== undefined && <div className="connect-box connector__detail"><p>Use a <a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noreferrer">GitHub personal access token</a>.</p><div className="row"><input type="password" value={tokens[app.id] ?? ""} onChange={(e) => setTokens((t) => ({ ...t, [app.id]: e.target.value }))} placeholder="Paste token" aria-label="GitHub personal access token"/><button onClick={() => { setConnectorError(""); addConnector({ catalogId: app.id, token: tokens[app.id] }).catch((e) => setConnectorError(e.message)); }}>Save</button></div></div>}
+                {connection?.status === "awaiting_code" && <div className="connect-box connector__detail"><p>1. <a href={connection.authUrl} target="_blank" rel="noreferrer">Open sign-in</a></p><p>2. After you approve, your browser lands on a page that won't load. Copy its address (starts with http://127.0.0.1) and paste it here.</p><div className="row"><input value={codes[connection._id] ?? ""} onChange={(e) => setCodes((x) => ({ ...x, [connection._id]: e.target.value }))} placeholder="Paste address" aria-label={`${app.label} callback address`} /><button onClick={() => submitConnectorCode({ id: connection._id, code: codes[connection._id] ?? "" }).catch((e) => setConnectorError(e.message))}>Finish</button></div></div>}
+                {connection?.status === "error" && <div className="connect-box connector__detail"><p className="err">{connection.error ?? "Could not connect."}</p><button className="ghost" onClick={() => retry().catch((e) => setConnectorError(e.message))}>Try again</button><button className="ghost" onClick={() => removeConnector({ id: connection._id })}>Remove</button></div>}
+              </div>
+            );
+          })}
+          {connectors?.filter((c) => !catalog?.some((a) => a.id === c.name)).map((c) => (
+            <div key={c._id} className="connector">
+              <span className="connector__icon" aria-hidden="true">{c.label[0]?.toUpperCase()}</span>
+              <div className="connector__copy"><b>{c.label}</b><span className="dim">{c.url}</span></div>
+              {c.status === "connected" ? <span className="badge connected">Connected · {c.tools ?? 0} tools</span>
+                : ["adding", "submitting", "removing"].includes(c.status) ? <span className="dim"><span className="spin" /> {c.status === "submitting" ? "Finishing sign-in…" : c.status === "removing" ? "Disconnecting…" : "Connecting…"}</span>
+                : null}
+              {c.status !== "removing" && <button className="btn btn--ghost btn--sm" onClick={() => removeConnector({ id: c._id })}>{c.status === "connected" ? "Disconnect" : "Remove"}</button>}
+              {c.status === "awaiting_code" && <div className="connect-box connector__detail"><p>1. <a href={c.authUrl} target="_blank" rel="noreferrer">Open sign-in</a></p><p>2. After you approve, your browser lands on a page that won't load. Copy its address (starts with http://127.0.0.1) and paste it here.</p><div className="row"><input value={codes[c._id] ?? ""} onChange={(e) => setCodes((x) => ({ ...x, [c._id]: e.target.value }))} placeholder="Paste address" aria-label={`${c.label} callback address`} /><button onClick={() => submitConnectorCode({ id: c._id, code: codes[c._id] ?? "" }).catch((e) => setConnectorError(e.message))}>Finish</button></div></div>}
+              {c.status === "error" && <div className="connect-box connector__detail"><p className="err">{c.error ?? "Could not connect."}</p><button className="ghost" onClick={() => addConnector({ label: c.label, url: c.url }).catch((e) => setConnectorError(e.message))}>Try again</button></div>}
+            </div>
+          ))}
+          {connectorError && <p className="err" role="alert">{connectorError}</p>}
+          <button className="ghost" onClick={() => setShowCustom(!showCustom)} aria-expanded={showCustom}>Add a custom app</button>
+          {showCustom && <div className="connect-box"><div className="row"><input value={custom.label} onChange={(e) => setCustom({ ...custom, label: e.target.value })} placeholder="Name" aria-label="App name" /><input value={custom.url} onChange={(e) => setCustom({ ...custom, url: e.target.value })} placeholder="https://" aria-label="App URL" /></div><div className="row"><input type="password" value={custom.token} onChange={(e) => setCustom({ ...custom, token: e.target.value })} placeholder="Optional token" aria-label="App token" /><button onClick={() => addConnector({ label: custom.label || undefined, url: custom.url, token: custom.token || undefined }).then(() => { setCustom({ label: "", url: "", token: "" }); setShowCustom(false); }).catch((e) => setConnectorError(e.message))}>Add</button></div></div>}
         </section>
 
         <section>
@@ -872,32 +920,90 @@ type PaneDoc = { _id: Id<"panes">; title: string; workspaceId: Id<"workspaces"> 
 function BrowserView({ workspaceId, live }: { workspaceId: Id<"workspaces">; live: boolean }) {
   const { code } = useView();
   const frame = useQuery(api.files.browserFrame, { workspaceId, code });
+  const browser = useQuery(api.browser.status, { workspaceId, code });
+  const me = useQuery(api.profile.me);
+  const input = useMutation(api.browser.input);
   const [open, setOpen] = useState(() => localStorage.getItem("tandem-browser") !== "0");
   const [big, setBig] = useState(false);
+  const [control, setControl] = useState(false);
+  const [url, setUrl] = useState("");
+  const [toast, setToast] = useState("");
+  const [previous, setPrevious] = useState<string | null>(null);
+  const [ripple, setRipple] = useState<{ x: number; y: number } | null>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const typeBuffer = useRef("");
+  const typeTimer = useRef<number | undefined>(undefined);
+  const scroll = useRef(0);
+  const scrollTimer = useRef<number | undefined>(undefined);
+  const send = (action: { kind: "click" | "scroll" | "key" | "type" | "back" | "reload" | "navigate"; x?: number; y?: number; dy?: number; key?: string; text?: string; url?: string }) => {
+    input({ workspaceId, action }).catch((e) => { setToast(e.message || "Could not control browser."); window.setTimeout(() => setToast(""), 3000); });
+  };
+  useEffect(() => { if (frame?.url) setUrl(frame.url); }, [frame?.url]);
+  useEffect(() => () => { window.clearTimeout(typeTimer.current); window.clearTimeout(scrollTimer.current); }, []);
   if (!frame) return null;
-  const fresh = live && Date.now() - frame.at < 60_000;
+  const running = browser?.running ?? live;
+  const canControl = running && !code;
   const toggle = () => {
     localStorage.setItem("tandem-browser", open ? "0" : "1");
     setOpen(!open);
   };
+  const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!control) return;
+    const box = e.currentTarget.getBoundingClientRect();
+    const scale = Math.min(box.width / 1280, box.height / 800);
+    const width = 1280 * scale, height = 800 * scale;
+    const x = (e.clientX - box.left - (box.width - width) / 2) / scale;
+    const y = (e.clientY - box.top - (box.height - height) / 2) / scale;
+    if (x < 0 || y < 0 || x > 1280 || y > 800) return;
+    setRipple({ x: e.clientX - box.left, y: e.clientY - box.top });
+    window.setTimeout(() => setRipple(null), 500);
+    send({ kind: "click", x, y });
+  };
+  const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (!control) return;
+    e.preventDefault(); scroll.current += e.deltaY;
+    if (!scrollTimer.current) scrollTimer.current = window.setTimeout(() => { send({ kind: "scroll", dy: scroll.current }); scroll.current = 0; scrollTimer.current = undefined; }, 150);
+  };
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!control) return;
+    if (e.key === "Escape" && !e.shiftKey) { e.preventDefault(); setControl(false); return; }
+    const special = ["Enter", "Backspace", "Tab", "Escape", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "PageUp", "PageDown", "Home", "End", "Delete"];
+    if (special.includes(e.key)) { e.preventDefault(); send({ kind: "key", key: e.key }); return; }
+    if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault(); typeBuffer.current += e.key; window.clearTimeout(typeTimer.current);
+      typeTimer.current = window.setTimeout(() => { if (typeBuffer.current) send({ kind: "type", text: typeBuffer.current }); typeBuffer.current = ""; }, 300);
+    }
+  };
+  const surface = (modal = false) => <div ref={frameRef} className={`browser__frame ${control ? "browser__frame--control" : ""} ${modal ? "browser__frame--modal" : ""}`} tabIndex={control ? 0 : -1} onClick={onClick} onWheel={onWheel} onKeyDown={onKeyDown} title={frame.title}>
+    {previous && previous !== frame.image && <img className="browser__image browser__image--previous" src={previous} alt="" />}
+    {frame.image && <img className="browser__image" src={frame.image} alt={`Agent browser: ${frame.title || frame.url}`} onLoad={() => setPrevious(frame.image)} />}
+    {ripple && <i className="browser__ripple" style={{ left: ripple.x, top: ripple.y }} />}
+  </div>;
   return (
-    <section className={`browser ${open ? "" : "browser--closed"} ${big ? "browser--big" : ""}`} aria-label="Agent browser">
+    <section className={`browser ${open ? "" : "browser--closed"}`} aria-label="Agent browser">
       <div className="browser__bar">
-        <span className="browser__dots" aria-hidden="true"><i /><i /><i /></span>
-        <span className="browser__url" title={frame.url}>{frame.url || "about:blank"}</span>
-        <span className={`browser__who ${fresh ? "live" : ""}`}>
-          {fresh ? <><span className="browser__pulse" aria-hidden="true" />{frame.by}'s agent is browsing</> : <>Last browsed by {frame.by}'s agent</>}
+        <button className="ghost" aria-label="Back" disabled={!running || !!code} onClick={() => send({ kind: "back" })}>←</button>
+        <button className="ghost" aria-label="Reload" disabled={!running || !!code} onClick={() => send({ kind: "reload" })}>↻</button>
+        <form className="browser__url" onSubmit={(e) => { e.preventDefault(); if (running && !code) send({ kind: "navigate", url }); }}><input aria-label="Browser address" value={url} onChange={(e) => setUrl(e.target.value)} readOnly={!running || !!code} /></form>
+        <span className={`browser__who ${running ? "live" : ""}`}>
+          {running ? <><span className="browser__pulse" aria-hidden="true" />{frame.by}'s agent is browsing</> : <>Browser is idle</>}
         </span>
-        {open && <button className="ghost" onClick={() => setBig(!big)} title={big ? "Smaller" : "Bigger"}>{big ? "–" : "⤢"}</button>}
+        {frame.controller && frame.controller !== me?.profile?.name && <span className="browser__controller">{frame.controller} is controlling</span>}
+        {toast && <span className="browser__toast" role="status">{toast}</span>}
+        {open && canControl && <button className={`ghost ${control ? "browser__take" : ""}`} aria-pressed={control} onClick={() => { setControl(!control); window.setTimeout(() => frameRef.current?.focus(), 0); }}>{control ? "Stop control" : "Take control"}</button>}
+        {open && <button className="ghost" aria-label="Expand browser" onClick={() => setBig(true)}>⤢</button>}
         <button className="ghost" onClick={toggle} aria-expanded={open}>{open ? "Hide" : "Show browser"}</button>
       </div>
-      {open && frame.image && (
-        <a href={frame.image} target="_blank" rel="noreferrer" className="browser__frame" title={frame.title}>
-          <img src={frame.image} alt={`Agent browser: ${frame.title || frame.url}`} />
-        </a>
-      )}
+      {open && surface()}
+      {big && <div className="browser__modal" role="dialog" aria-modal="true" aria-label="Expanded agent browser" onKeyDown={(e) => { if (e.key === "Escape" && !e.shiftKey && !control) setBig(false); }}><div className="browser__modal-card"><div className="browser__modal-tools"><button className="ghost" aria-label="Back" disabled={!running || !!code} onClick={() => send({ kind: "back" })}>←</button><button className="ghost" aria-label="Reload" disabled={!running || !!code} onClick={() => send({ kind: "reload" })}>↻</button>{canControl && <button className="ghost" aria-pressed={control} onClick={() => setControl(!control)}>{control ? "Stop control" : "Take control"}</button>}<button className="ghost" aria-label="Close expanded browser" onClick={() => setBig(false)}>Close</button></div>{surface(true)}</div></div>}
     </section>
   );
+}
+
+function ToolChip({ kind, text }: { kind: string; text: string }) {
+  const short = tidyPaths(text).replace(/\s+/g, " ").slice(0, 180);
+  const icon = kind === "browse" ? "◎" : kind === "file" ? "↗" : kind === "todo" ? "✓" : "⌁";
+  return <span className="tool-chip" title={tidyPaths(text)}><i aria-hidden="true">{icon}</i>{short}</span>;
 }
 
 function Pane({
@@ -1016,7 +1122,7 @@ function Pane({
               "steps" in e ? (
                 <details key={`g${i}`} className="steps-group">
                   <summary>{stepSummary(e.steps)}</summary>
-                  {e.steps.map((s) => <pre key={s._id} className={`ev ${s.kind}`}>{tidyPaths(s.text)}</pre>)}
+                  {e.steps.map((s) => s.kind === "command" && s.text.startsWith("$") ? <pre key={s._id} className={`ev ${s.kind}`}>{tidyPaths(s.text)}</pre> : <ToolChip key={s._id} kind={s.kind} text={s.text} />)}
                 </details>
               ) : e.kind === "todo" ? (
                 // Only the newest todo snapshot of a run is shown.
@@ -1041,10 +1147,12 @@ function Pane({
                     </span>
                   )}
                 </div>
-              ) : (
+              ) : e.kind === "error" || (e.kind === "command" && e.text.startsWith("$")) ? (
                 <pre key={e._id} className={`ev ${e.kind}`}>
                   {tidyPaths(e.text)}
                 </pre>
+              ) : (
+                <ToolChip key={e._id} kind={e.kind} text={e.text} />
               ),
             )}
             {(r.status === "done" || r.status === "error" || r.status === "cancelled") && (

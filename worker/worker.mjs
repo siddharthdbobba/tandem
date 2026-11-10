@@ -606,8 +606,8 @@ async function handleConnector(c) {
         child.stderr.on("data", onData);
         child.on("close", () => { clearTimeout(t); res(null); });
       });
-      const u = authUrl && new URL(authUrl);
-      const redirect = u && new URL(u.searchParams.get("redirect_uri") ?? "");
+      const u = authUrl && new globalThis.URL(authUrl);
+      const redirect = u && new globalThis.URL(u.searchParams.get("redirect_uri") ?? "");
       if (!u || !redirect || redirect.hostname !== "127.0.0.1") {
         child.kill("SIGTERM");
         return void (await upd("adding", "error", { error: firstLine(out) }));
@@ -629,7 +629,7 @@ async function handleConnector(c) {
       if (!p) return void (await upd("submitting", "error", { error: "That sign-in expired. Click Try again." }));
       // Deliver only the code and state to the sandbox's own listener. We
       // build the URL ourselves from the port jcode chose, never the pasted host.
-      const pasted = new URL(c.code);
+      const pasted = new globalThis.URL(c.code);
       if (pasted.searchParams.get("state") !== p.state) {
         p.child.kill("SIGTERM");
         pendingOAuth.delete(c._id);

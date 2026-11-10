@@ -199,3 +199,15 @@ export const mergeDuplicate = internalMutation({
     return { moved: accounts.map((a) => a.provider) };
   },
 });
+
+// Live e2e: send a take-control browser action as a user (skips auth, still members only).
+export const browserInputAs = internalMutation({
+  args: { email: v.string(), workspaceId: v.id("workspaces"), action: v.any() },
+  handler: async (ctx, { email, workspaceId, action }) => {
+    const user = (await ctx.db.query("users").collect()).find((u) => u.email === email);
+    if (!user) throw new Error("no such user");
+    const m = await ctx.db.query("members").withIndex("by_workspace_user", (q) => q.eq("workspaceId", workspaceId).eq("userId", user._id)).unique();
+    if (!m) throw new Error("not a member");
+    await ctx.db.insert("browserInputs", { workspaceId, userId: user._id, action });
+  },
+});

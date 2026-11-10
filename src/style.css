@@ -407,6 +407,11 @@ button[aria-busy="true"] { cursor: progress; }
 .connect-box { margin-top: var(--space-sm); padding: var(--space-md); border-radius: var(--radius-sm); background: var(--color-paper-2); border: var(--rule); display: flex; flex-direction: column; gap: var(--space-xs); }
 .connect-box a { color: var(--color-accent); }
 .connect-box p { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.connector { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-sm); padding: var(--space-sm) 0; border-top: var(--rule); }
+.connector__icon { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--color-accent-soft); color: var(--color-accent); font-weight: 650; }
+.connector__copy { min-width: 0; display: flex; flex-direction: column; }
+.connector__copy .dim { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.connector__detail { grid-column: 2 / -1; }
 
 /* workspace */
 .layout {
@@ -427,23 +432,34 @@ aside { border-right: var(--rule); overflow: auto; background: var(--color-paper
 
 /* agent browser */
 .browser { flex: none; border: var(--rule); border-radius: var(--radius-md); background: var(--color-surface, #fff); overflow: hidden; }
-.browser__bar { display: flex; align-items: center; gap: 10px; padding: 7px 10px; background: var(--color-paper-2); border-bottom: var(--rule); font-size: var(--text-xs); }
+.browser__bar { display: flex; align-items: center; gap: 7px; padding: 7px 10px; background: var(--color-paper-2); border-bottom: var(--rule); font-size: var(--text-xs); }
 .browser--closed .browser__bar { border-bottom: 0; }
-.browser__dots { display: inline-flex; gap: 5px; }
-.browser__dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--color-rule-2); }
 .browser__url {
-  flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  font-family: var(--font-mono); font-size: 11.5px; color: var(--color-ink-2);
-  background: var(--color-surface, #fff); border: var(--rule); border-radius: 999px; padding: 3px 12px;
+  flex: 1; min-width: 80px; margin: 0;
 }
+.browser__url input { width: 100%; height: 28px; padding: 2px 12px; border-radius: 999px; font-family: var(--font-mono); font-size: 11.5px; }
+.browser__url input[readonly] { background: var(--color-surface, #fff); color: var(--color-ink-2); }
+.browser__controller, .browser__toast { color: var(--color-muted); white-space: nowrap; }
+.browser__toast { color: var(--color-danger-ink); max-width: 18ch; overflow: hidden; text-overflow: ellipsis; }
+.browser__take { color: var(--color-accent); }
+.browser__frame { position: relative; width: 100%; aspect-ratio: 16 / 10; background: #fff; overflow: hidden; outline: 0; }
+.browser__frame--control { outline: 2px solid var(--color-accent); outline-offset: -2px; cursor: crosshair; }
+.browser__frame--control::after { content: "You're in control · Esc to stop"; position: absolute; right: 10px; bottom: 10px; z-index: 3; padding: 3px 7px; border-radius: 99px; background: rgb(47 93 74 / .88); color: #fff; font-size: 11px; }
+.browser__image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; z-index: 1; opacity: 0; animation: browser-in .2s ease-out forwards; }
+.browser__image--previous { opacity: 1; animation: none; z-index: 0; }
+@keyframes browser-in { to { opacity: 1; } }
+.browser__ripple { position: absolute; z-index: 4; width: 24px; height: 24px; transform: translate(-50%, -50%); border-radius: 50%; background: rgb(232 148 90 / .35); border: 1px solid var(--color-accent); animation: browser-ripple .5s ease-out forwards; pointer-events: none; }
+@keyframes browser-ripple { to { transform: translate(-50%, -50%) scale(2); opacity: 0; } }
+.browser__modal { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: var(--space-lg); background: rgb(22 33 28 / .58); }
+.browser__modal-card { position: relative; width: min(96vw, 1280px); background: var(--color-paper); border-radius: var(--radius-md); overflow: hidden; box-shadow: var(--shadow-pop); }
+.browser__modal-tools { display: flex; align-items: center; gap: var(--space-xs); padding: var(--space-xs); border-bottom: var(--rule); background: var(--color-paper-2); }
+.browser__frame--modal { max-height: calc(100vh - 4rem); }
+.browser__close { position: absolute; z-index: 5; right: 4px; top: 4px; background: rgb(255 255 255 / .8); }
 .browser__who { color: var(--color-muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
 .browser__who.live { color: var(--color-ink); font-weight: 500; }
 .browser__pulse { width: 7px; height: 7px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); animation: pulse 1.6s infinite; }
 @keyframes pulse { 70% { box-shadow: 0 0 0 7px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
 @media (prefers-reduced-motion: reduce) { .browser__pulse { animation: none; } }
-.browser__frame { display: block; background: #fff; max-height: 34vh; overflow: hidden; }
-.browser--big .browser__frame { max-height: 70vh; }
-.browser__frame img { display: block; width: 100%; height: auto; }
 
 /* document viewer */
 .seg { display: inline-flex; border: var(--rule); border-radius: 8px; overflow: hidden; }
@@ -509,6 +525,8 @@ aside { border-right: var(--rule); overflow: auto; background: var(--color-paper
 .ev.browse { color: var(--color-accent); padding: 2px 2px; font-size: 12px; }
 .ev.browse::before { content: "◎ "; }
 .ev.error { color: var(--color-danger-ink); background: var(--color-danger-soft); }
+.tool-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; align-self: flex-start; padding: 3px 8px; border: var(--rule); border-radius: 999px; color: var(--color-muted); font-family: var(--font-mono); font-size: var(--text-2xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tool-chip i { color: var(--color-accent); font-style: normal; }
 .status { font-size: var(--text-xs); color: var(--color-muted); display: flex; align-items: center; gap: 6px; }
 .status.error { color: var(--color-danger-ink); }
 .prompt-box { display: flex; gap: var(--space-xs); padding: var(--space-sm); border-top: var(--rule); align-items: flex-end; }

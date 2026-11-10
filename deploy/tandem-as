@@ -100,13 +100,16 @@ if [ "${1:-}" = "--add-connector" ] || [ "${1:-}" = "--remove-connector" ]; then
   op="$1"; name="${2:-}"
   [[ "$name" =~ ^[a-z][a-z0-9-]{0,29}$ ]] && [ "$name" != browser ] || { echo "bad name" >&2; exit 2; }
   # --add-connector reads {"url": "https://...", "token": "..."?} on stdin.
-  head -c 20000 | python3 - "$conn_file" "$op" "$name" <<'PY' || exit 2
+  # The heredoc below is python's stdin, so hand the request over via env
+  # (env, not argv, so a token never shows up in ps).
+  req=$(head -c 20000)
+  TANDEM_REQ="$req" python3 - "$conn_file" "$op" "$name" <<'PY' || exit 2
 import json, os, re, sys, tempfile
 path, op, name = sys.argv[1:4]
 try: d = json.load(open(path))
 except Exception: d = {}
 if op == "--add-connector":
-    req = json.load(sys.stdin)
+    req = json.loads(os.environ.get("TANDEM_REQ") or "{}")
     url = req.get("url", "")
     if not re.fullmatch(r"https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~%/+-]*)?", url) or len(url) > 300:
         sys.exit("bad url")

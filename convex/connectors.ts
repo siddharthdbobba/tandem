@@ -69,9 +69,11 @@ export const add = mutation({
       url = (url ?? "").trim();
       if (!URL_RE.test(url) || url.length > 300) throw new Error("Use a full https:// address.");
       label = (label ?? "").trim().slice(0, 40) || new URL(url).hostname;
+      // Retrying a custom app that failed: reuse its slot.
+      const prior = existing.find((e) => e.url === url && e.status !== "connected" && !CATALOG.some((c) => c.id === e.name));
       const base = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 20) || "app";
-      let name = /^[a-z]/.test(base) ? base : `app-${base}`.slice(0, 20);
-      const taken = new Set([...existing.map((e) => e.name), ...CATALOG.map((c) => c.id), "browser"]);
+      let name = prior?.name ?? (/^[a-z]/.test(base) ? base : `app-${base}`.slice(0, 20));
+      const taken = new Set([...existing.filter((e) => e !== prior).map((e) => e.name), ...CATALOG.map((c) => c.id), "browser"]);
       for (let i = 2; taken.has(name); i++) name = `${base.slice(0, 16)}-${i}`;
       // Custom servers: a token means bearer auth, else try OAuth (servers
       // without auth just connect).

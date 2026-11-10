@@ -390,3 +390,15 @@ export const steerRun = mutation({
     });
   },
 });
+
+export const renamePane = mutation({
+  args: { paneId: v.id("panes"), title: v.string() },
+  handler: async (ctx, { paneId, title }) => {
+    const pane = await ctx.db.get(paneId);
+    if (!pane) throw new Error("pane not found");
+    await requireMember(ctx, pane.workspaceId);
+    title = title.trim();
+    if (!title || title.length > 40) throw new Error("pane name must be 1 to 40 characters");
+    await ctx.db.patch(paneId, { title });
+  },
+});

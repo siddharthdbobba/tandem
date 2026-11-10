@@ -4,6 +4,7 @@ import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import { renderMarkdown } from "./markdown";
 import { goJoin, useView } from "./view";
+import { ExportButton } from "./Export";
 
 // Right-hand panel in a workspace: team chat (default) and workspace settings.
 export function SidePanel({ workspaceId, onClose, tab, setTab, unread }: {
@@ -35,6 +36,7 @@ function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
   const { code, readOnly } = useView();
   const msgs = useQuery(api.chat.list, { workspaceId, code });
   const send = useMutation(api.chat.send);
+  const vote = useMutation(api.chat.vote);
   const me = useQuery(api.profile.me);
   const [text, setText] = useState("");
   const [err, setErr] = useState("");
@@ -46,7 +48,8 @@ function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
         {msgs?.length === 0 && (
           <div className="chat__empty">
             <p><b>Talk it through here.</b></p>
-            <p className="dim">Plans, votes, "who's driving?". Start a message with <code>@ai</code> to hand it to the AI with the chat as context.</p>
+            <p className="dim">Plans, "who's driving?". Start with <code>@ai</code> to hand a question to the AI with the chat as context.</p>
+            <p className="dim">Can't decide? <code>/poll Where? | Tahoe | Yosemite</code></p>
           </div>
         )}
         {msgs?.map((m, i) => {
@@ -62,7 +65,24 @@ function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
                   <span className="dim">{time(m.at)}</span>
                 </div>
               )}
-              <div className={`msg__text md ${ai ? "to-ai" : ""}`} dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }} />
+              {m.poll ? (
+                <div className="poll">
+                  <p className="poll__q">📊 {m.poll.question}</p>
+                  {m.poll.options.map((o, oi) => {
+                    const total = m.poll!.options.reduce((n, x) => n + x.count, 0) || 1;
+                    return (
+                      <button key={oi} type="button" className={`poll__opt ${o.mine ? "mine" : ""}`} disabled={readOnly}
+                        title={o.voters.join(", ") || "No votes yet"} onClick={() => vote({ messageId: m._id, option: oi })}>
+                        <span className="poll__bar" style={{ width: `${(o.count / total) * 100}%` }} />
+                        <span className="poll__label">{o.mine ? "✓ " : ""}{o.label}</span>
+                        <span className="poll__count">{o.count}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className={`msg__text md ${ai ? "to-ai" : ""}`} dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }} />
+              )}
             </div>
           );
         })}
@@ -149,6 +169,11 @@ function WorkspaceSettings({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
           )}
         </div>
       )}
+
+      <div className="field">Files
+        <em>Download everything in this workspace.</em>
+        <ExportButton workspaceId={workspaceId} name={ws.name} code={code} />
+      </div>
 
       {ws.member && (
         <div className="field danger-zone">

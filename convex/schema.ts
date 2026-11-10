@@ -63,6 +63,11 @@ export default defineSchema({
     author: v.string(),
     color: v.string(),
     text: v.string(),
+    // A quick group poll ("/poll Where? | Tahoe | Yosemite"). Votes are userIds per option.
+    poll: v.optional(v.object({
+      question: v.string(),
+      options: v.array(v.object({ label: v.string(), votes: v.array(v.id("users")) })),
+    })),
   }).index("by_workspace", ["workspaceId"]),
 
   members: defineTable({

@@ -719,6 +719,8 @@ function Pane({
   const remove = useMutation(api.workspaces.removePane);
   const [text, setText] = useState("");
   const textRef = useRef<HTMLTextAreaElement>(null);
+  const [renaming, setRenaming] = useState(false);
+  const renamePane = useMutation(api.workspaces.renamePane);
   const suggestions = useQuery(api.workspaces.suggestions, { workspaceId: pane.workspaceId, code });
   const bottom = useRef<HTMLDivElement>(null);
   const running = feed?.find((r) => r.status === "running" || r.status === "queued");
@@ -733,7 +735,13 @@ function Pane({
   return (
     <section className="pane" onFocus={onFocus} onClick={onFocus}>
       <div className="pane-head">
-        <strong>{pane.title}</strong>
+        {renaming ? (
+          <input className="pane-title-input" autoFocus defaultValue={pane.title} maxLength={40} aria-label="Pane name"
+            onBlur={(e) => { const t = e.target.value.trim(); setRenaming(false); if (t && t !== pane.title) renamePane({ paneId: pane._id, title: t }); }}
+            onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") { e.currentTarget.value = pane.title; e.currentTarget.blur(); } }} />
+        ) : (
+          <strong className="pane-title" title={readOnly ? undefined : "Double-click to rename"} onDoubleClick={() => !readOnly && setRenaming(true)}>{pane.title}</strong>
+        )}
         <span className="viewers">
           {viewers.map((v) => (
             <span key={v.userId} className="dot" style={{ background: v.color }} title={`${v.name} is here`} />

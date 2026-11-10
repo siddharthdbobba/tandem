@@ -152,5 +152,35 @@ await test("files: delete and rename reach disk; outsiders blocked", async () =>
   assert.equal((await ann.query(api.files.tree, { workspaceId: ws })).length, 0);
 });
 
+await test("polls: create, vote, move vote, unvote; viewers read; @ai sees tallies; pane rename", async () => {
+  const ws = await ann.mutation(api.workspaces.create, { name: "Polls" });
+  const { inviteCode } = await ann.query(api.workspaces.get, { id: ws });
+  await ben.mutation(api.workspaces.join, { inviteCode });
+  await assert.rejects(ann.mutation(api.chat.send, { workspaceId: ws, text: "/poll Only one | a" }));
+  await ann.mutation(api.chat.send, { workspaceId: ws, text: "/poll Where to? | Tahoe | Yosemite | Big Sur" });
+  let [p] = await ann.query(api.chat.list, { workspaceId: ws });
+  assert.equal(p.poll.question, "Where to?");
+  assert.deepEqual(p.poll.options.map((o) => o.label), ["Tahoe", "Yosemite", "Big Sur"]);
+  await ann.mutation(api.chat.vote, { messageId: p._id, option: 1 });
+  await ben.mutation(api.chat.vote, { messageId: p._id, option: 1 });
+  await ben.mutation(api.chat.vote, { messageId: p._id, option: 0 }); // moves Ben's vote
+  [p] = await ann.query(api.chat.list, { workspaceId: ws });
+  assert.deepEqual(p.poll.options.map((o) => o.count), [1, 1, 0]);
+  assert.equal(p.poll.options[1].mine, true);
+  assert.deepEqual(p.poll.options[0].voters, ["Ben"]);
+  await ann.mutation(api.chat.vote, { messageId: p._id, option: 1 }); // same option clears
+  [p] = await ann.query(api.chat.list, { workspaceId: ws });
+  assert.deepEqual(p.poll.options.map((o) => o.count), [1, 0, 0]);
+  await assert.rejects(cat.mutation(api.chat.vote, { messageId: p._id, option: 0 }));
+  await assert.rejects(anon.mutation(api.chat.vote, { messageId: p._id, option: 0 }));
+  assert.equal((await anon.query(api.chat.list, { workspaceId: ws, code: inviteCode }))[0].poll.options[0].count, 1);
+  // Pane rename.
+  const [pane] = await ann.query(api.workspaces.listPanes, { workspaceId: ws });
+  await ben.mutation(api.workspaces.renamePane, { paneId: pane._id, title: "Itinerary" });
+  assert.equal((await ann.query(api.workspaces.listPanes, { workspaceId: ws }))[0].title, "Itinerary");
+  await assert.rejects(cat.mutation(api.workspaces.renamePane, { paneId: pane._id, title: "x" }));
+  await assert.rejects(ann.mutation(api.workspaces.renamePane, { paneId: pane._id, title: "  " }));
+});
+
 console.log(results.join("\n"));
 process.exit(results.some((r) => r.startsWith("FAIL")) ? 1 : 0);

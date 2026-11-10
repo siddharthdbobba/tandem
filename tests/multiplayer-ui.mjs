@@ -247,6 +247,19 @@ try {
     await A.js("document.querySelector('.side__close').click(), true");
   });
 
+  await test("download as .zip builds a real zip containing the workspace files", async () => {
+    // Capture the blob the export creates instead of letting Chrome save it.
+    await A.js(`(() => { window.__zip = null; const orig = URL.createObjectURL; URL.createObjectURL = (b) => { window.__zip = b; return orig(b); }; return true; })()`);
+    await A.js("[...document.querySelectorAll('.panel-toggle')].find(b=>b.getAttribute('aria-label')==='Workspace settings').click(), true");
+    await until(async () => await A.js("!!document.querySelector('.ws-settings')"), 8000, "settings open");
+    await A.js("[...document.querySelectorAll('.ws-settings button')].find(b=>b.textContent.includes('.zip')).click(), true");
+    await until(async () => await A.js("!!window.__zip"), 30000, "zip created");
+    const info = await A.js("(async () => { const b = new Uint8Array(await window.__zip.arrayBuffer()); const s = new TextDecoder('latin1').decode(b); return { size: b.length, pk: s.slice(0,2), hasShared: s.includes('shared.txt') }; })()");
+    assert.equal(info.pk, "PK");
+    assert.ok(info.hasShared, "zip lists shared.txt");
+    await A.js("document.querySelector('.side__close').click(), true");
+  });
+
   await test("no page errors in either browser", async () => {
     assert.deepEqual(await A.js("window.__errs"), []);
     assert.deepEqual(await B.js("window.__errs"), []);

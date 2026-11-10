@@ -55,6 +55,6 @@ shift
 
 exec setpriv --reuid="$user" --regid=tandem --init-groups --inh-caps=-all \
   env -i HOME="$home" JCODE_HOME="$home/.jcode" USER="$user" LOGNAME="$user" \
-  PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 JCODE_NO_TELEMETRY=1 \
+  PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 JCODE_NO_TELEMETRY=1 JCODE_RUN_AUTO_POKE=0 \
   TERM=dumb TMPDIR="$home/tmp" \
   bash -c 'umask 007; cd "$0" && exec /usr/local/bin/jcode "$@"' "$cwd_real" "$@"

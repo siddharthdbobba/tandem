@@ -157,6 +157,27 @@ try {
     }
   });
 
+  await test("uploading a file in alice's UI shows it in bob's tree; binary is refused", async () => {
+    await A.js(`(() => {
+      const input = document.querySelector('.upload-btn input[type=file]');
+      const dt = new DataTransfer();
+      dt.items.add(new File(['uploaded by alice\\n'], 'upload-${id}.txt', { type: 'text/plain' }));
+      dt.items.add(new File([new Uint8Array([0x89, 0x50, 0, 1])], 'pic.png'));
+      input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+    await until(async () => (await B.js("document.querySelector('.tree').innerText")).includes(`upload-${id}.txt`), 15000, "bob sees upload");
+    const f = await bob.query(api.files.get, { workspaceId: wsId, path: `upload-${id}.txt` });
+    assert.equal(f.content, "uploaded by alice\n");
+    await until(async () => /pic\.png looks binary/.test(await A.js("document.querySelector('.tree').innerText")), 5000, "binary refused");
+    assert.equal(await bob.query(api.files.get, { workspaceId: wsId, path: "pic.png" }), null);
+  });
+
+  await test("pane model picker lists models; unconnected providers are disabled", async () => {
+    const opts = await A.js("[...document.querySelectorAll('.prompt-actions select option')].map(o => o.value + (o.disabled ? '!' : ''))");
+    assert.ok(opts.includes(""), "has 'my default'");
+    assert.ok(opts.includes("claude|claude-sonnet-5-5!"), "claude model listed, disabled when not connected");
+    assert.ok(opts.some((o) => o.startsWith("openai|gpt-")), "openai models listed");
+  });
+
   await test("no page errors in either browser", async () => {
     assert.deepEqual(await A.js("window.__errs"), []);
     assert.deepEqual(await B.js("window.__errs"), []);

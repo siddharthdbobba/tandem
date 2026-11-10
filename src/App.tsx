@@ -483,7 +483,17 @@ function Pane({
   canClose: boolean;
 }) {
   const feed = useQuery(api.workspaces.paneFeed, { paneId: pane._id });
+  const me = useQuery(api.profile.me);
   const submit = useMutation(api.workspaces.submitPrompt);
+  // Per-pane model pick, remembered on this device. Empty = your Settings default.
+  const pickKey = `tandem-pick-${pane._id}`;
+  const [pick, setPick] = useState(() => localStorage.getItem(pickKey) ?? "");
+  const choose = (v: string) => {
+    setPick(v);
+    if (v) localStorage.setItem(pickKey, v);
+    else localStorage.removeItem(pickKey);
+  };
+  const connected = new Set(me?.connections.filter((c) => c.status === "connected").map((c) => c.provider));
   const cancel = useMutation(api.workspaces.cancelRun);
   const remove = useMutation(api.workspaces.removePane);
   const [text, setText] = useState("");
@@ -522,11 +532,16 @@ function Pane({
                 </span>
               )}
             </div>
-            {r.events.map((e) => (
-              <pre key={e._id} className={`ev ${e.kind}`}>
-                {e.text}
-              </pre>
-            ))}
+            {r.events.map((e, i) =>
+              e.kind === "todo" ? (
+                // Only the newest todo snapshot of a run is shown.
+                r.events.slice(i + 1).some((x) => x.kind === "todo") ? null : <TodoCard key={e._id} text={e.text} live={r.status === "running"} />
+              ) : (
+                <pre key={e._id} className={`ev ${e.kind}`}>
+                  {e.text}
+                </pre>
+              ),
+            )}
             <div className={`status ${r.status}`}>
               {r.status === "queued" && "queued"}
               {r.status === "running" && (
@@ -549,7 +564,12 @@ function Pane({
         onSubmit={(e) => {
           e.preventDefault();
           if (!text.trim()) return;
-          submit({ paneId: pane._id, prompt: text.trim() });
+          const [provider, model] = pick ? pick.split("|") : [];
+          submit({
+            paneId: pane._id,
+            prompt: text.trim(),
+            ...(provider ? { provider: provider as ProviderId, model: model || undefined } : {}),
+          });
           setText("");
         }}
       >
@@ -565,9 +585,56 @@ function Pane({
             }
           }}
         />
-        <button>Send</button>
+        <div className="prompt-actions">
+          <select className="select select--sm" value={pick} onChange={(e) => choose(e.target.value)}
+            title="Which of your subscriptions and models this pane uses for your prompts">
+            <option value="">My default{me?.profile ? ` (${me.profile.model ?? (me.profile.provider === "claude" ? "Claude" : "ChatGPT")})` : ""}</option>
+            {PROVIDERS.map((pr) => (
+              <optgroup key={pr.id} label={`${pr.id === "claude" ? "Claude" : "ChatGPT"}${connected.has(pr.id) ? "" : " (not connected)"}`}>
+                <option value={`${pr.id}|`} disabled={!connected.has(pr.id)}>{pr.id === "claude" ? "Claude" : "ChatGPT"} default</option>
+                {MODELS[pr.id].map((m) => (
+                  <option key={m} value={`${pr.id}|${m}`} disabled={!connected.has(pr.id)}>{m}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          <button>Send</button>
+        </div>
       </form>
     </section>
+  );
+}
+
+// Live view of the agent's todo list, like Jcode's terminal checklist.
+function TodoCard({ text, live }: { text: string; live: boolean }) {
+  let items: { content: string; status: string }[] = [];
+  try {
+    items = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const done = items.filter((t) => t.status === "completed").length;
+  const active = items.filter((t) => t.status !== "cancelled").length;
+  return (
+    <div className="todo-card">
+      <div className="todo-card__head">
+        <span>Plan</span>
+        <span className="todo-card__dots" aria-label={`${done} of ${active} done`}>
+          {items.filter((t) => t.status !== "cancelled").map((t, i) => <i key={i} className={t.status} />)}
+        </span>
+        <span className="dim">{done}/{active}</span>
+      </div>
+      <ul>
+        {items.map((t, i) => (
+          <li key={i} className={t.status}>
+            <span className="todo-card__mark" aria-hidden="true">
+              {t.status === "completed" ? "✓" : t.status === "cancelled" ? "×" : t.status === "in_progress" ? (live ? <span className="spin" /> : "•") : "○"}
+            </span>
+            {t.content}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -582,11 +649,36 @@ function FileTree({
 }) {
   const files = useQuery(api.files.tree, { workspaceId });
   const save = useMutation(api.files.save);
+  const [drag, setDrag] = useState(false);
+  const [upErr, setUpErr] = useState("");
+  const upload = async (list: FileList | null) => {
+    setUpErr("");
+    for (const f of Array.from(list ?? [])) {
+      // Text files only: the workspace mirror stores text, and the agent reads text.
+      if (f.size > 400_000) { setUpErr(`${f.name} is over 400 KB`); continue; }
+      const buf = new Uint8Array(await f.arrayBuffer());
+      if (buf.includes(0)) { setUpErr(`${f.name} looks binary; only text files for now`); continue; }
+      const name = (f.webkitRelativePath || f.name).replace(/[^\w.\-/ ]/g, "_");
+      try {
+        await save({ workspaceId, path: name, content: new TextDecoder().decode(buf) });
+      } catch (e) {
+        setUpErr(`${f.name}: ${(e as Error).message}`);
+      }
+    }
+  };
   const sorted = [...(files ?? [])].sort((a, b) => a.path.localeCompare(b.path));
   return (
-    <div className="tree">
+    <div className={`tree ${drag ? "tree--drop" : ""}`}
+      onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
+      onDragLeave={() => setDrag(false)}
+      onDrop={(e) => { e.preventDefault(); setDrag(false); upload(e.dataTransfer.files); }}>
       <div className="tree-head">
         <strong>Files</strong>
+        <span>
+        <label className="ghost upload-btn" title="Upload text files (or drop them here)">
+          ↑ upload
+          <input type="file" multiple hidden onChange={(e) => { upload(e.target.files); e.target.value = ""; }} />
+        </label>
         <button
           className="ghost"
           onClick={() => {
@@ -596,8 +688,10 @@ function FileTree({
         >
           + file
         </button>
+        </span>
       </div>
-      {sorted.length === 0 && <p className="dim">Empty. Files the agent writes show up here.</p>}
+      {upErr && <p className="err tree__err">{upErr}</p>}
+      {sorted.length === 0 && <p className="dim">Empty. Drop files here, or let the agent write some.</p>}
       {sorted.map((f) => {
         const depth = f.path.split("/").length - 1;
         return (

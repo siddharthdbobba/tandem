@@ -98,5 +98,15 @@ test("AUTH_ERR does not fire on ordinary failures", () => {
   assert.ok(AUTH_ERR.test("HTTP 401 Unauthorized"));
 });
 
+test("todo tool: each call becomes one compact todo event with the full list", () => {
+  const { out } = replay("jcode-todo.jsonl");
+  const todos = out.filter((e) => e.kind === "todo").map((e) => JSON.parse(e.text));
+  assert.equal(todos.length, 2);
+  assert.deepEqual(todos[0].map((t) => t.status), ["in_progress", "pending", "pending"]);
+  assert.deepEqual(todos[1].map((t) => t.status), ["completed", "in_progress", "pending"]);
+  assert.deepEqual(Object.keys(todos[0][0]).sort(), ["content", "status"]);
+  assert.ok(!out.some((e) => e.kind === "command" && e.text.startsWith("todo")));
+});
+
 console.log(results.join("\n"));
 process.exit(results.some((r) => r.startsWith("FAIL")) ? 1 : 0);

@@ -1,0 +1,160 @@
+{"model":"claude-haiku-5-5","provider":"Claude","session_id":"session_squid_1794278919714_7e5cf4c715d92b27","type":"start"}
+{"connection":"https/sse","type":"connection_type"}
+{"phase":"sending request","type":"connection_phase"}
+{"phase":"waiting for response","type":"connection_phase"}
+{"id":"toolu_01T7yQA4myxjRLFrJNfHX1gg","name":"todo","type":"tool_start"}
+{"phase":"streaming","type":"connection_phase"}
+{"delta":"","type":"tool_input"}
+{"delta":"{\"inten","type":"tool_input"}
+{"delta":"t\": \"Wr","type":"tool_input"}
+{"delta":"ite a 3","type":"tool_input"}
+{"delta":"-item p","type":"tool_input"}
+{"delta":"lan as ","type":"tool_input"}
+{"delta":"request","type":"tool_input"}
+{"delta":"ed\"","type":"tool_input"}
+{"delta":", \"todo","type":"tool_input"}
+{"delta":"s\": [{\"","type":"tool_input"}
+{"delta":"id\":\"1\"","type":"tool_input"}
+{"delta":",\"conte","type":"tool_input"}
+{"delta":"nt\":\"St","type":"tool_input"}
+{"delta":"ep one\"","type":"tool_input"}
+{"delta":",\"statu","type":"tool_input"}
+{"delta":"s\":\"in_","type":"tool_input"}
+{"delta":"progres","type":"tool_input"}
+{"delta":"s\",\"pri","type":"tool_input"}
+{"delta":"ority\":","type":"tool_input"}
+{"delta":"\"high\",","type":"tool_input"}
+{"delta":"\"confid","type":"tool_input"}
+{"delta":"ence\":\"","type":"tool_input"}
+{"delta":"plausib","type":"tool_input"}
+{"delta":"le\"},{\"","type":"tool_input"}
+{"delta":"id\":\"2\"","type":"tool_input"}
+{"delta":",\"conte","type":"tool_input"}
+{"delta":"nt\":\"St","type":"tool_input"}
+{"delta":"ep two\"","type":"tool_input"}
+{"delta":",\"statu","type":"tool_input"}
+{"delta":"s\":\"pen","type":"tool_input"}
+{"delta":"ding\",\"","type":"tool_input"}
+{"delta":"priorit","type":"tool_input"}
+{"delta":"y\":\"hig","type":"tool_input"}
+{"delta":"h\",\"con","type":"tool_input"}
+{"delta":"fidence","type":"tool_input"}
+{"delta":"\":\"plau","type":"tool_input"}
+{"delta":"sible\"}","type":"tool_input"}
+{"delta":",{\"id\":","type":"tool_input"}
+{"delta":"\"3\",\"co","type":"tool_input"}
+{"delta":"ntent\":","type":"tool_input"}
+{"delta":"\"Step t","type":"tool_input"}
+{"delta":"hree\",\"","type":"tool_input"}
+{"delta":"status\"","type":"tool_input"}
+{"delta":":\"pendi","type":"tool_input"}
+{"delta":"ng\",\"pr","type":"tool_input"}
+{"delta":"iority\"","type":"tool_input"}
+{"delta":":\"mediu","type":"tool_input"}
+{"delta":"m\",\"con","type":"tool_input"}
+{"delta":"fidence","type":"tool_input"}
+{"delta":"\":\"plau","type":"tool_input"}
+{"delta":"sible\"}","type":"tool_input"}
+{"delta":"]}","type":"tool_input"}
+{"id":"toolu_01T7yQA4myxjRLFrJNfHX1gg","name":"todo","type":"tool_exec"}
+{"id":"toolu_01WHsxQ7RfHCNUcqsqRTvRS5","name":"todo","type":"tool_start"}
+{"delta":"","type":"tool_input"}
+{"delta":"{\"inten","type":"tool_input"}
+{"delta":"t\": \"Ma","type":"tool_input"}
+{"delta":"rk firs","type":"tool_input"}
+{"delta":"t compl","type":"tool_input"}
+{"delta":"eted an","type":"tool_input"}
+{"delta":"d secon","type":"tool_input"}
+{"delta":"d in pr","type":"tool_input"}
+{"delta":"ogress\"","type":"tool_input"}
+{"delta":", \"upda","type":"tool_input"}
+{"delta":"te\": [{","type":"tool_input"}
+{"delta":"\"id\":\"1","type":"tool_input"}
+{"delta":"\",\"stat","type":"tool_input"}
+{"delta":"us\":\"co","type":"tool_input"}
+{"delta":"mpleted","type":"tool_input"}
+{"delta":"\",\"comp","type":"tool_input"}
+{"delta":"letion_","type":"tool_input"}
+{"delta":"confide","type":"tool_input"}
+{"delta":"nce\":\"v","type":"tool_input"}
+{"delta":"erified","type":"tool_input"}
+{"delta":"\"},{\"id","type":"tool_input"}
+{"delta":"\":\"2\",\"","type":"tool_input"}
+{"delta":"status\"","type":"tool_input"}
+{"delta":":\"in_pr","type":"tool_input"}
+{"delta":"ogress\"","type":"tool_input"}
+{"delta":"}]}","type":"tool_input"}
+{"id":"toolu_01WHsxQ7RfHCNUcqsqRTvRS5","name":"todo","type":"tool_exec"}
+{"stop_reason":"tool_use","type":"message_end"}
+{"cache_creation_input":21781,"cache_read_input":0,"input":351,"output":309,"type":"tokens"}
+{"error":null,"id":"toolu_01T7yQA4myxjRLFrJNfHX1gg","name":"todo","output":"[\n  {\n    \"content\": \"Step one\",\n    \"status\": \"in_progress\",\n    \"priority\": \"high\",\n    \"id\": \"1\",\n    \"confidence\": \"plausible\",\n    \"confidence_history\": [\n      \"plausible\"\n    ]\n  },\n  {\n    \"content\": \"Step two\",\n    \"status\": \"pending\",\n    \"priority\": \"high\",\n    \"id\": \"2\",\n    \"confidence\": \"plausible\",\n    \"confidence_history\": [\n      \"plausible\"\n    ]\n  },\n  {\n    \"content\": \"Step three\",\n    \"status\": \"pending\",\n    \"priority\": \"medium\",\n    \"id\": \"3\",\n    \"confidence\": \"plausible\",\n    \"confidence_history\": [\n      \"plausible\"\n    ]\n  }\n]","type":"tool_done"}
+{"error":null,"id":"toolu_01WHsxQ7RfHCNUcqsqRTvRS5","name":"todo","output":"[\n  {\n    \"content\": \"Step one\",\n    \"status\": \"completed\",\n    \"priority\": \"high\",\n    \"id\": \"1\",\n    \"confidence\": \"plausible\",\n    \"completion_confidence\": \"verified\",\n    \"confidence_history\": [\n      \"plausible\",\n      \"verified\"\n    ]\n  },\n  {\n    \"content\": \"Step two\",\n    \"status\": \"in_progress\",\n    \"priority\": \"high\",\n    \"id\": \"2\",\n    \"confidence\": \"plausible\",\n    \"confidence_history\": [\n      \"plausible\"\n    ]\n  },\n  {\n    \"content\": \"Step three\",\n    \"status\": \"pending\",\n    \"priority\": \"medium\",\n    \"id\": \"3\",\n    \"confidence\": \"plausible\",\n    \"confidence_history\": [\n      \"plausible\"\n    ]\n  }\n]","type":"tool_done"}
+{"connection":"https/sse","type":"connection_type"}
+{"phase":"sending request","type":"connection_phase"}
+{"phase":"waiting for response","type":"connection_phase"}
+{"phase":"streaming","type":"connection_phase"}
+{"text":"ok","type":"text_delta"}
+{"stop_reason":"end_turn","type":"message_end"}
+{"cache_creation_input":678,"cache_read_input":21781,"input":636,"output":4,"type":"tokens"}
+{"incomplete_todos":2,"message":"You have 2 incomplete todos. Continue working, or update the todo tool.","session_id":"session_squid_1794278919714_7e5cf4c715d92b27","type":"auto_poke"}
+{"connection":"https/sse","type":"connection_type"}
+{"phase":"sending request","type":"connection_phase"}
+{"phase":"waiting for response","type":"connection_phase"}
+{"phase":"streaming","type":"connection_phase"}
+{"phase":"streaming","type":"connection_phase"}
+{"text":"Both","type":"text_delta"}
+{"text":" todos are still open","type":"text_delta"}
+{"text":" because the plan you","type":"text_delta"}
+{"text":" asked for is","type":"text_delta"}
+{"text":" only","type":"text_delta"}
+{"text":" a","type":"text_delta"}
+{"text":" placeholder: \"","type":"text_delta"}
+{"text":"Step two","type":"text_delta"}
+{"text":"\" and \"Step three\" have","type":"text_delta"}
+{"text":" no real work beh","type":"text_delta"}
+{"text":"ind them. I left them","type":"text_delta"}
+{"text":" as","type":"text_delta"}
+{"text":" they are, since","type":"text_delta"}
+{"text":" you asked for","type":"text_delta"}
+{"text":" step","type":"text_delta"}
+{"text":" two to be in progress and no","type":"text_delta"}
+{"text":" other tools.","type":"text_delta"}
+{"text":" T","type":"text_delta"}
+{"text":"ell me what the","type":"text_delta"}
+{"text":" steps should be and","type":"text_delta"}
+{"text":" I'","type":"text_delta"}
+{"text":"ll p","type":"text_delta"}
+{"text":"ick them up.","type":"text_delta"}
+{"stop_reason":"end_turn","type":"message_end"}
+{"cache_creation_input":638,"cache_read_input":22459,"input":49,"output":347,"type":"tokens"}
+{"incomplete_todos":2,"message":"You have 2 incomplete todos. Continue working, or update the todo tool.","session_id":"session_squid_1794278919714_7e5cf4c715d92b27","type":"auto_poke"}
+{"connection":"https/sse","type":"connection_type"}
+{"phase":"sending request","type":"connection_phase"}
+{"phase":"waiting for response","type":"connection_phase"}
+{"phase":"streaming","type":"connection_phase"}
+{"phase":"streaming","type":"connection_phase"}
+{"text":"I'm not","type":"text_delta"}
+{"text":" going to continue these","type":"text_delta"}
+{"text":".","type":"text_delta"}
+{"text":" \"","type":"text_delta"}
+{"text":"Step two\" and \"Step","type":"text_delta"}
+{"text":" three\" are placeholder tit","type":"text_delta"}
+{"text":"les from your test, so there's","type":"text_delta"}
+{"text":" no real work beh","type":"text_delta"}
+{"text":"ind them. I can","type":"text_delta"}
+{"text":" close","type":"text_delta"}
+{"text":" them out","type":"text_delta"}
+{"text":" as cancelled if","type":"text_delta"}
+{"text":" you want the","type":"text_delta"}
+{"text":" list cleared, or give","type":"text_delta"}
+{"text":" me the","type":"text_delta"}
+{"text":" real steps and I'll work","type":"text_delta"}
+{"text":" through them.","type":"text_delta"}
+{"stop_reason":"end_turn","type":"message_end"}
+{"cache_creation_input":133,"cache_read_input":23097,"input":49,"output":282,"type":"tokens"}
+{"incomplete_todos":2,"message":"You have 2 incomplete todos. Continue working, or update the todo tool.","session_id":"session_squid_1794278919714_7e5cf4c715d92b27","type":"auto_poke"}
+{"connection":"https/sse","type":"connection_type"}
+{"phase":"sending request","type":"connection_phase"}
+{"phase":"waiting for response","type":"connection_phase"}
+{"phase":"streaming","type":"connection_phase"}
+{"phase":"streaming","type":"connection_phase"}

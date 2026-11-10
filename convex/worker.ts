@@ -47,13 +47,18 @@ export const claim = mutation({
       .query("threads")
       .withIndex("by_pane_user", (q) => q.eq("paneId", run.paneId).eq("userId", run.userId))
       .unique();
-    await ctx.db.patch(runId, { status: "running", provider: profile.provider, model: profile.model });
+    // The pane's picker wins; otherwise the person's saved default.
+    const provider = run.wantProvider ?? profile.provider;
+    const model = run.wantProvider ? run.wantModel : (run.wantModel ?? profile.model);
+    await ctx.db.patch(runId, { status: "running", provider, model });
+    // A session only resumes on the provider that created it.
+    const resume = thread && (thread.provider ?? profile.provider) === provider ? thread.sessionId : null;
     return {
       run,
       sandboxKey: profile.sandboxKey,
-      provider: profile.provider,
-      model: profile.model ?? null,
-      sessionId: thread?.sessionId ?? null,
+      provider,
+      model: model ?? null,
+      sessionId: resume,
     };
   },
 });
@@ -75,6 +80,7 @@ export const appendEvent = mutation({
       v.literal("command"),
       v.literal("file"),
       v.literal("error"),
+      v.literal("todo"),
     ),
     text: v.string(),
   },
@@ -105,8 +111,9 @@ export const finish = mutation({
       .query("threads")
       .withIndex("by_pane_user", (q) => q.eq("paneId", run.paneId).eq("userId", run.userId))
       .unique();
-    if (t) await ctx.db.patch(t._id, { sessionId });
-    else await ctx.db.insert("threads", { paneId: run.paneId, userId: run.userId, sessionId });
+    const provider = run.provider;
+    if (t) await ctx.db.patch(t._id, { sessionId, provider });
+    else await ctx.db.insert("threads", { paneId: run.paneId, userId: run.userId, sessionId, provider });
   },
 });
 

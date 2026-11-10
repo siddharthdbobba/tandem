@@ -72,6 +72,7 @@ export default defineSchema({
     paneId: v.id("panes"),
     userId: v.id("users"),
     sessionId: v.string(),
+    provider: v.optional(v.string()), // sessions don't carry across providers
   }).index("by_pane_user", ["paneId", "userId"]),
 
   // One prompt submitted to a pane. The worker claims queued runs.
@@ -88,6 +89,8 @@ export default defineSchema({
       v.literal("error"),
       v.literal("cancelled"),
     ),
+    wantProvider: v.optional(provider), // picked in the pane for this prompt
+    wantModel: v.optional(v.string()),
     provider: v.optional(v.string()), // what it actually ran on
     model: v.optional(v.string()),
     finishedAt: v.optional(v.number()),
@@ -104,6 +107,7 @@ export default defineSchema({
       v.literal("command"),
       v.literal("file"),
       v.literal("error"),
+      v.literal("todo"), // JSON array of the agent's todo list
     ),
     text: v.string(),
   }).index("by_pane", ["paneId"]),

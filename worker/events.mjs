@@ -49,6 +49,16 @@ export function translator(dir) {
           input = JSON.parse(t.input || "{}");
         } catch {}
         const outText = ev.error ? `error: ${ev.error}` : (ev.output ?? "");
+        if (t.name === "todo") {
+          // Output is the full current list. Keep just what the card needs.
+          try {
+            const list = JSON.parse(outText);
+            if (Array.isArray(list))
+              out.push({ kind: "todo", text: JSON.stringify(list.map((x) => ({ content: String(x.content ?? ""), status: String(x.status ?? "pending") }))) });
+          } catch {}
+          tools.delete(ev.id);
+          break;
+        }
         if (t.name === "bash") {
           out.push({ kind: "command", text: `$ ${input.command ?? ""}\n${clip(outText.replace(/\n*--- Command finished with exit code: 0 ---\n*$/, "\n"))}`.trimEnd() });
         } else if (FILE_TOOLS.has(t.name)) {

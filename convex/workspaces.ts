@@ -150,8 +150,14 @@ export const paneFeed = query({
 });
 
 export const submitPrompt = mutation({
-  args: { paneId: v.id("panes"), prompt: v.string() },
-  handler: async (ctx, { paneId, prompt }) => {
+  args: {
+    paneId: v.id("panes"),
+    prompt: v.string(),
+    provider: v.optional(v.union(v.literal("claude"), v.literal("openai"))),
+    model: v.optional(v.string()),
+  },
+  handler: async (ctx, { paneId, prompt, provider, model }) => {
+    if (model && !/^[A-Za-z0-9._:\-/\[\]]{1,80}$/.test(model)) throw new Error("bad model name");
     const pane = await ctx.db.get(paneId);
     if (!pane) throw new Error("pane not found");
     const userId = await requireMember(ctx, pane.workspaceId);
@@ -165,6 +171,8 @@ export const submitPrompt = mutation({
       userId,
       author: profile.name,
       status: "queued",
+      wantProvider: provider,
+      wantModel: model || undefined,
     });
   },
 });

@@ -1,4 +1,5 @@
 import { renderMarkdown, tidyPaths } from "./markdown";
+import { PeakMark } from "./art";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
@@ -87,7 +88,7 @@ function SignIn({ initial }: { initial: "signIn" | "signUp" }) {
   const methods = useQuery(api.authInfo.methods);
   return (
     <div className="auth">
-      <a href="#/" className="brand auth__brand"><span className="brand__mark" aria-hidden="true" />Tandem</a>
+      <a href="#/" className="brand auth__brand"><PeakMark />Tandem</a>
       <div className="auth__card">
       <h1 className="auth__title">{flow === "signIn" ? "Sign in" : "Create your account"}</h1>
       <p className="auth__sub">
@@ -224,66 +225,101 @@ function TopRight() {
 function AppBar({ children }: { children?: React.ReactNode }) {
   return (
     <header className="bar">
-      <a href="#/" className="brand"><span className="brand__mark" aria-hidden="true" />Tandem</a>
+      <a href="#/" className="brand"><PeakMark />Tandem</a>
       {children}
       <TopRight />
     </header>
   );
 }
 
+const TEMPLATE_ICON: Record<string, string> = { trip: "🏔️", school: "📚", app: "🛠️", blank: "⛺" };
+
 function Home() {
   const workspaces = useQuery(api.workspaces.list);
+  const templates = useQuery(api.workspaces.templates);
   const create = useMutation(api.workspaces.create);
   const me = useQuery(api.profile.me);
+  const [picked, setPicked] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const connected = me?.connections.some((c) => c.status === "connected");
+  const first = me?.profile?.name.split(" ")[0];
+  const start = async (template: string, n: string) => {
+    if (!n.trim()) return;
+    setBusy(true);
+    try {
+      const id = await create({ name: n.trim(), template });
+      location.hash = `/w/${id}`;
+    } finally {
+      setBusy(false);
+    }
+  };
+  const tpl = templates?.find((t) => t.id === picked);
   return (
     <div className="page">
       <AppBar />
       <main className="home">
         <div className="home__head">
-          <h1 className="home__title">Your workspaces</h1>
-          <p className="home__sub">Each workspace is one shared folder. Invite people with its link.</p>
+          <h1 className="home__title">{first ? `Hey ${first}.` : "Welcome."} What are you working on?</h1>
+          <p className="home__sub">Every workspace has shared files, an AI that can browse and build, and a link to bring friends in.</p>
         </div>
-        <form
-          className="newws"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            if (!name.trim()) return;
-            setBusy(true);
-            try {
-              const id = await create({ name: name.trim() });
-              location.hash = `/w/${id}`;
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <label className="sr-only" htmlFor="newws">New workspace name</label>
-          <input id="newws" placeholder="Name a new workspace, e.g. trail-weather" value={name}
-            onChange={(e) => setName(e.target.value)} maxLength={60} />
-          <button className="btn btn--primary" disabled={busy || !name.trim()}>Create workspace</button>
-        </form>
-        {workspaces === undefined ? (
-          <p className="dim">Loading…</p>
-        ) : workspaces.length === 0 ? (
-          <div className="empty">
-            <p className="empty__title">No workspaces yet</p>
-            <p className="dim">Create one above, or open an invite link someone sent you.</p>
-          </div>
-        ) : (
-          <ul className="wslist">
-            {workspaces.map((w) => (
-              <li key={w._id}>
-                <a href={`#/w/${w._id}`} className="wslist__row">
-                  <span className="wslist__name">{w.name}</span>
-                  <span className="wslist__meta">{w.owner === me?.profile?.name ? "yours" : `shared by ${w.owner}`}</span>
-                  <span className="wslist__go" aria-hidden="true">→</span>
-                </a>
-              </li>
-            ))}
-          </ul>
+
+        {me && !connected && (
+          <a href="#/settings" className="setup-nudge">
+            <span className="setup-nudge__step">1</span>
+            <span><b>Connect Claude or ChatGPT</b><span className="dim"> so the AI can work for you. Takes about 30 seconds and uses the plan you already pay for.</span></span>
+            <span className="setup-nudge__go" aria-hidden="true">→</span>
+          </a>
         )}
+
+        <section aria-labelledby="start-h" className="start">
+          <h2 id="start-h" className="section-label">Start something</h2>
+          <div className="tpl-grid">
+            {templates?.map((t) => (
+              <button key={t.id} type="button" className={`tpl ${picked === t.id ? "on" : ""}`}
+                onClick={() => { setPicked(t.id); setName(t.id === "blank" ? "" : t.name.replace(/^Plan a /, "Our ").replace(/^Build an app$/, "Our app").replace(/^School \/ group project$/, "Group project")); }}>
+                <span className="tpl__icon" aria-hidden="true">{TEMPLATE_ICON[t.id] ?? t.emoji}</span>
+                <span className="tpl__name">{t.name}</span>
+                <span className="tpl__blurb">{t.blurb}</span>
+              </button>
+            ))}
+          </div>
+          {tpl && (
+            <form className="newws" onSubmit={(e) => { e.preventDefault(); start(tpl.id, name); }}>
+              <label className="sr-only" htmlFor="newws">Workspace name</label>
+              <input id="newws" autoFocus placeholder="Name it, e.g. Yosemite weekend" value={name}
+                onChange={(e) => setName(e.target.value)} maxLength={60} />
+              <button className="btn btn--primary" disabled={busy || !name.trim()}>
+                {busy ? "Creating…" : "Create workspace"}
+              </button>
+            </form>
+          )}
+        </section>
+
+        <section aria-labelledby="mine-h">
+          <h2 id="mine-h" className="section-label">Your workspaces</h2>
+          {workspaces === undefined ? (
+            <p className="dim">Loading…</p>
+          ) : workspaces.length === 0 ? (
+            <div className="empty">
+              <p className="empty__title">No workspaces yet</p>
+              <p className="dim">Pick a starting point above, or open a link a friend sent you.</p>
+            </div>
+          ) : (
+            <ul className="wslist">
+              {workspaces.map((w) => (
+                <li key={w._id}>
+                  <a href={`#/w/${w._id}`} className="wslist__row">
+                    <span className="wslist__icon" aria-hidden="true">{TEMPLATE_ICON[w.template ?? "blank"] ?? "⛺"}</span>
+                    <span className="wslist__name">{w.name}</span>
+                    <span className="wslist__meta">{w.owner === me?.profile?.name ? "yours" : `shared by ${w.owner}`}</span>
+                    <span className="wslist__go" aria-hidden="true">→</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </main>
     </div>
   );
@@ -552,7 +588,7 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
   );
 }
 
-type PaneDoc = { _id: Id<"panes">; title: string };
+type PaneDoc = { _id: Id<"panes">; title: string; workspaceId: Id<"workspaces"> };
 
 // Live view of the agent's browser. Everyone in the workspace sees the same
 // frames, including people watching through a share link.
@@ -617,6 +653,8 @@ function Pane({
   const cancel = useMutation(api.workspaces.cancelRun);
   const remove = useMutation(api.workspaces.removePane);
   const [text, setText] = useState("");
+  const textRef = useRef<HTMLTextAreaElement>(null);
+  const suggestions = useQuery(api.workspaces.suggestions, { workspaceId: pane.workspaceId, code });
   const bottom = useRef<HTMLDivElement>(null);
   const running = feed?.find((r) => r.status === "running" || r.status === "queued");
   const live = feed?.find((r) => r.status === "running");
@@ -643,7 +681,19 @@ function Pane({
         )}
       </div>
       <div className="feed">
-        {feed?.length === 0 && <p className="dim">Prompt the agent. Everyone here sees the output live. Your prompts run on your subscription.</p>}
+        {feed?.length === 0 && (
+          <div className="pane-empty">
+            <p className="pane-empty__title">Ask the AI to get started</p>
+            <p className="dim">Everyone here sees it work live{readOnly ? "" : ", and can jump in"}.</p>
+            {!readOnly && suggestions && (
+              <div className="chips">
+                {suggestions.map((s) => (
+                  <button key={s} type="button" className="chip" onClick={() => { setText(s); textRef.current?.focus(); }}>{s}</button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {feed?.map((r) => (
           <div key={r._id} className="run">
             <div className="prompt">
@@ -710,9 +760,10 @@ function Pane({
         }}
       >
         <textarea
+          ref={textRef}
           rows={2}
           value={text}
-          placeholder={live ? `Steer the agent (Enter), or queue a follow-up...` : running ? "Queue a follow-up..." : "Ask the agent to build something..."}
+          placeholder={live ? "Redirect the AI (Enter), or queue a follow-up…" : running ? "Queue a follow-up…" : "Ask the AI anything: plan, research, write, build…"}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {

@@ -25,7 +25,7 @@ export const TEMPLATES: Template[] = [
       {
         path: "itinerary.md",
         content:
-          "# Trip itinerary\n\n**Where:** \n**When:** \n**Who:** \n\n## Day 1\n- \n\n## Day 2\n- \n\n## Ideas we haven't decided on\n- \n",
+          "# Trip itinerary\n\n- **Where:** TBD\n- **When:** TBD\n- **Who:** TBD\n\n## Day 1\n- \n\n## Day 2\n- \n\n## Ideas we haven't decided on\n- \n",
       },
       { path: "packing.md", content: "# Packing list\n\n## Shared gear (who's bringing it)\n- [ ] \n\n## Everyone\n- [ ] \n" },
       { path: "budget.md", content: "# Budget\n\n| Item | Cost | Paid by | Split |\n|---|---|---|---|\n| | | | |\n" },
@@ -48,7 +48,7 @@ export const TEMPLATES: Template[] = [
       {
         path: "plan.md",
         content:
-          "# Project plan\n\n**Assignment:** \n**Due:** \n\n## Tasks\n| Task | Owner | Due | Status |\n|---|---|---|---|\n| | | | |\n",
+          "# Project plan\n\n- **Assignment:** TBD\n- **Due:** TBD\n\n## Tasks\n| Task | Owner | Due | Status |\n|---|---|---|---|\n| | | | |\n",
       },
       { path: "notes.md", content: "# Research notes\n\n- \n" },
       { path: "draft.md", content: "# Draft\n\n" },

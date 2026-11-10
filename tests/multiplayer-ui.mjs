@@ -79,7 +79,7 @@ async function signInUI(b, [email, password]) {
     const set = (sel, v) => { const el = document.querySelector(sel); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); };
     set('input[name=email]', ${JSON.stringify(email)}); set('input[name=password]', ${JSON.stringify(password)});
     document.querySelector('form.stack').requestSubmit(); return true; })()`);
-  await until(async () => (await b.js("document.body.innerText.includes('Your workspaces')")), 20000, "signed in");
+  await until(async () => (await b.js("document.body.innerText.toLowerCase().includes('your workspaces')")), 20000, "signed in");
   await b.send("Page.navigate", { url: `${UI}/#/join/${inviteCode}` });
 }
 const A = await browser("alice", 9341);
@@ -143,7 +143,7 @@ try {
     const C = await browser("carl", 9343);
     try {
       await C.send("Page.navigate", { url: `${UI}/` });
-      await until(async () => /Code with agents, together/.test(await C.js("document.body.innerText")), 15000, "landing");
+      await until(async () => /shared AI workspace/.test(await C.js("document.body.innerText")), 15000, "landing");
       assert.ok(await C.js("!!document.querySelector('a[href=\"#/signup\"]')"), "landing has a sign-up CTA");
       // Share link, signed out: the workspace is visible live but read-only.
       await C.send("Page.navigate", { url: `${UI}/#/join/${inviteCode}` });

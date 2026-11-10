@@ -177,3 +177,23 @@ export const paneLog = internalQuery({
     return out;
   },
 });
+
+// Operator-only: attach a provider login (e.g. GitHub) to an existing user and
+// remove the empty duplicate user it created. Refuses if the duplicate owns anything.
+export const mergeDuplicate = internalMutation({
+  args: { keepUserId: v.id("users"), dropUserId: v.id("users") },
+  handler: async (ctx, { keepUserId, dropUserId }) => {
+    if (keepUserId === dropUserId) throw new Error("same user");
+    const owned = await ctx.db.query("members").withIndex("by_user", (q) => q.eq("userId", dropUserId)).first();
+    if (owned) throw new Error("duplicate belongs to a workspace; not merging");
+    const accounts = await ctx.db.query("authAccounts").withIndex("userIdAndProvider", (q) => q.eq("userId", dropUserId)).collect();
+    for (const a of accounts) await ctx.db.patch(a._id, { userId: keepUserId });
+    for (const s of await ctx.db.query("authSessions").withIndex("userId", (q) => q.eq("userId", dropUserId)).collect()) {
+      for (const t of await ctx.db.query("authRefreshTokens").withIndex("sessionId", (q) => q.eq("sessionId", s._id)).collect()) await ctx.db.delete(t._id);
+      await ctx.db.delete(s._id);
+    }
+    for (const p of await ctx.db.query("profiles").withIndex("by_user", (q) => q.eq("userId", dropUserId)).collect()) await ctx.db.delete(p._id);
+    await ctx.db.delete(dropUserId);
+    return { moved: accounts.map((a) => a.provider) };
+  },
+});

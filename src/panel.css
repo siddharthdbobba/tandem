@@ -173,3 +173,20 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="tab"]:focus-v
 .mention-pop { position: absolute; left: var(--space-sm); bottom: calc(100% - 4px); z-index: 5; background: #fff; border: var(--rule); border-radius: 10px; box-shadow: var(--shadow-pop); padding: 4px; display: flex; flex-direction: column; min-width: 160px; }
 .mention-pop button { justify-content: flex-start !important; height: 30px !important; background: transparent !important; color: var(--color-ink) !important; border: 0 !important; font-size: var(--text-sm) !important; font-weight: 500; width: 100% !important; padding: 0 10px !important; }
 .mention-pop button:hover { background: var(--color-accent-soft) !important; }
+
+/* First-run welcome card in a workspace */
+.tour {
+  display: flex; align-items: center; gap: 14px;
+  margin: 12px 16px 0; padding: 12px 14px;
+  border: 1px solid var(--color-rule); border-left: 3px solid var(--color-accent);
+  border-radius: var(--radius-md); background: var(--color-accent-soft);
+  animation: tour-in var(--dur-slow) var(--ease-out);
+}
+.tour__num { font-family: var(--font-mono); font-size: 12px; color: var(--color-muted); flex: none; }
+.tour__text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; font-size: 14px; line-height: 1.45; }
+.tour__text strong { color: var(--color-ink); }
+.tour__text span { color: var(--color-muted); }
+.tour__actions { display: flex; gap: 6px; flex: none; }
+@keyframes tour-in { from { opacity: 0; transform: translateY(-4px); } }
+@media (max-width: 640px) { .tour { flex-wrap: wrap; } .tour__actions { width: 100%; justify-content: flex-end; } }
+@media (prefers-reduced-motion: reduce) { .tour { animation: none; } }

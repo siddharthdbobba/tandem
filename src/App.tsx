@@ -5,6 +5,7 @@ import { RunChanges } from "./Changes";
 const Editor = lazy(() => import("./Editor").then((m) => ({ default: m.Editor })));
 import { ViewCtx, goJoin, useView } from "./view";
 import { SidePanel } from "./SidePanel";
+import { Tour } from "./Tour";
 import { PublicPage } from "./Publish";
 import Privacy from "./Privacy";
 import { Palette, type Command } from "./Palette";
@@ -642,6 +643,7 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
           </Suspense>
         ) : (
           <>
+            {!readOnly && <Tour />}
             <BrowserView workspaceId={id} live={!!busy} />
             <div className="panes">
               {panes?.map((p) => (

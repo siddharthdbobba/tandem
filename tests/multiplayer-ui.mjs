@@ -93,6 +93,17 @@ try {
   await signInUI(B, creds.bob);
   await sleep(5000);
 
+  await test("first-run tour shows, steps through, and stays dismissed", async () => {
+    await until(async () => (await A.js("!!document.querySelector('.tour')")), 10000, "tour");
+    for (const label of ["Next", "Next", "Got it"]) {
+      await A.js(`[...document.querySelectorAll('.tour button')].find(b=>b.textContent==='${label}').click(), true`);
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    assert.equal(await A.js("!!document.querySelector('.tour')"), false);
+    assert.equal(await A.js("localStorage.getItem('tandem-tour-done')"), "1");
+    await B.js("localStorage.setItem('tandem-tour-done','1'), true");
+  });
+
   await test("both users see each other in presence", async () => {
     await until(async () => (await A.js("[...document.querySelectorAll('.people .avatar')].map(a=>a.title).sort().join(',')")) === "alice,bob", 25000, "presence");
     assert.equal(await B.js("[...document.querySelectorAll('.people .avatar')].map(a=>a.title).sort().join(',')"), "alice,bob");

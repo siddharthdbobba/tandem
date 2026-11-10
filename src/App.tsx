@@ -11,6 +11,11 @@ const PROVIDERS = [
   { id: "openai", label: "ChatGPT (Plus / Pro)" },
 ] as const;
 type ProviderId = (typeof PROVIDERS)[number]["id"];
+// From `jcode model list -p <provider>` on the server.
+const MODELS: Record<ProviderId, string[]> = {
+  claude: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5", "claude-sonnet-5", "claude-fable-5-2", "claude-opus-4-8", "claude-sonnet-4-6"],
+  openai: ["gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna", "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
+};
 
 // Routes: #/            home
 //         #/settings    my config
@@ -279,7 +284,6 @@ function Settings() {
   const submitCode = useMutation(api.profile.submitCode);
   const cancelConnect = useMutation(api.profile.cancelConnect);
   const [name, setName] = useState<string | null>(null);
-  const [model, setModel] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [saved, setSaved] = useState("");
   if (!me?.profile) return null;
@@ -327,7 +331,7 @@ function Settings() {
               <div key={pr.id} className="provider">
                 <label className="radio">
                   <input type="radio" name="provider" checked={p.provider === pr.id}
-                    onChange={() => update({ provider: pr.id }).then(() => flash("Default saved"))} />
+                    onChange={() => update({ provider: pr.id, model: null }).then(() => flash("Default saved"))} />
                   {pr.label}
                 </label>
                 <span className={`badge ${st?.status ?? "none"}`}>
@@ -371,13 +375,13 @@ function Settings() {
             </div>
           )}
 
-          <label>Model override (optional)</label>
-          <div className="row">
-            <input value={model ?? p.model ?? ""} onChange={(e) => setModel(e.target.value)}
-              placeholder="default for your subscription" maxLength={80} />
-            <button disabled={model === null || model === (p.model ?? "")}
-              onClick={async () => { await update({ model: model || null }); setModel(null); flash("Model saved"); }}>Save</button>
-          </div>
+          <label htmlFor="model">Model</label>
+          <select id="model" className="select" value={p.model ?? ""}
+            onChange={(e) => update({ model: e.target.value || null }).then(() => flash("Model saved"))}>
+            <option value="">Default for your subscription</option>
+            {[...MODELS[p.provider as ProviderId], ...(p.model && !MODELS[p.provider as ProviderId].includes(p.model) ? [p.model] : [])]
+              .map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
         </section>
         {saved && <p className="ok" role="status">{saved}</p>}
       </main>

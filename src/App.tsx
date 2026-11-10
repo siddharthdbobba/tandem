@@ -6,6 +6,7 @@ const Editor = lazy(() => import("./Editor").then((m) => ({ default: m.Editor })
 import { ViewCtx, goJoin, useView } from "./view";
 import { SidePanel } from "./SidePanel";
 import { Tour } from "./Tour";
+import { Shortcuts } from "./Shortcuts";
 import { PublicPage } from "./Publish";
 import Privacy from "./Privacy";
 import { Palette, type Command } from "./Palette";
@@ -548,8 +549,15 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
   };
   // Cmd/Ctrl+B toggles the file sidebar; Cmd/Ctrl+K opens the command palette.
   const [palette, setPalette] = useState(false);
+  const [help, setHelp] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      const typing = t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName);
+      if (e.key === "?" && !typing && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setHelp((h) => !h);
+      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
         e.preventDefault();
         toggleSidebar();
@@ -585,6 +593,7 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
     { id: "chat", group: "Workspace", label: "Open team chat", run: () => setPanel("chat") },
     { id: "settings", group: "Workspace", label: "Workspace settings (name, AI instructions, people)", run: () => setPanel("settings") },
     { id: "files", group: "Workspace", label: "Toggle file sidebar", hint: "⌘B", run: toggleSidebar },
+    { id: "help", group: "Workspace", label: "Keyboard shortcuts", hint: "?", run: () => setHelp(true) },
     ...(readOnly ? [] : [{ id: "models", group: "Account", label: "Connect Claude or ChatGPT / default model", run: () => { location.hash = "/settings"; } }]),
     { id: "home", group: "Account", label: "All workspaces", run: () => { location.hash = "/"; } },
     ...(tree ?? []).map((f) => ({ id: `f:${f.path}`, group: "Files", label: f.path, run: () => setOpenFile(f.path) })),
@@ -669,6 +678,7 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
         )}
       </main>
       <Palette open={palette} onClose={() => setPalette(false)} commands={commands} />
+      {help && <Shortcuts onClose={() => setHelp(false)} />}
       {panel && (
         <SidePanel workspaceId={id} tab={panel} setTab={(t) => setPanel(t)} onClose={() => setPanel(null)} unread={unread} />
       )}

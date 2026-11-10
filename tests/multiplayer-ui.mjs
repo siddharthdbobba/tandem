@@ -301,6 +301,16 @@ try {
     await until(async () => (await A.js("document.querySelector('.editor strong')?.textContent")) === "zebra-plan.md", 5000, "opened match");
   });
 
+  await test("? opens keyboard shortcuts (not while typing), Esc closes", async () => {
+    await A.js("document.activeElement?.blur(), document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true })), true");
+    await until(async () => (await A.js("!!document.querySelector('.shortcuts')")), 3000, "sheet open");
+    await A.js("document.querySelector('.shortcuts button').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), true");
+    await until(async () => (await A.js("!document.querySelector('.shortcuts')")), 3000, "sheet closed");
+    await A.js("(() => { const t = document.querySelector('textarea, .tree__filter'); t.focus(); t.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true })); return true; })()");
+    await sleep(300);
+    assert.equal(await A.js("!!document.querySelector('.shortcuts')"), false);
+  });
+
   await test("no page errors in either browser", async () => {
     assert.deepEqual(await A.js("window.__errs"), []);
     assert.deepEqual(await B.js("window.__errs"), []);

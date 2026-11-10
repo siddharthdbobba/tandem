@@ -52,6 +52,9 @@ export const deleteTestData = internalMutation({
         if (!dryRun) await ctx.storage.delete(fr.image);
         await del("browserFrames", fr._id); budget--;
       }
+      for (const m of await ctx.db.query("messages").withIndex("by_workspace", (q) => q.eq("workspaceId", w._id)).collect()) { await del("messages", m._id); budget--; }
+      for (const c of await ctx.db.query("changes").withIndex("by_workspace", (q) => q.eq("workspaceId", w._id)).collect()) { await del("changes", c._id); budget--; }
+      for (const pb of await ctx.db.query("publishes").withIndex("by_workspace_path", (q) => q.eq("workspaceId", w._id)).collect()) { await del("publishes", pb._id); budget--; }
       await del("workspaces", w._id); budget--;
     }
     if (workspaces.length && !dryRun) return { done: false, counts };

@@ -66,6 +66,8 @@ export const purgeWorkspace = internalMutation({
     }
     if (budget > 0) {
       for (const m of await ctx.db.query("messages").withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId)).take(budget)) await drop(m._id);
+      for (const c of await ctx.db.query("changes").withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId)).take(budget)) await drop(c._id);
+      for (const pb of await ctx.db.query("publishes").withIndex("by_workspace_path", (q) => q.eq("workspaceId", workspaceId)).collect()) await drop(pb._id);
       for (const pr of await ctx.db.query("presence").withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId)).collect()) await drop(pr._id);
       for (const fr of await ctx.db.query("browserFrames").withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId)).collect()) {
         await ctx.storage.delete(fr.image);

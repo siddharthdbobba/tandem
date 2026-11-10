@@ -89,7 +89,9 @@ function SignIn({ initial }: { initial: "signIn" | "signUp" }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => { setFlow(initial); }, [initial]);
-  const joining = !!sessionStorage.getItem("tandem-join");
+  const joinCode = sessionStorage.getItem("tandem-join");
+  const joining = !!joinCode;
+  const invite = useQuery(api.workspaces.peek, joinCode ? { code: joinCode } : "skip");
   const methods = useQuery(api.authInfo.methods);
   return (
     <div className="auth">
@@ -97,7 +99,9 @@ function SignIn({ initial }: { initial: "signIn" | "signUp" }) {
       <div className="auth__card">
       <h1 className="auth__title">{flow === "signIn" ? "Sign in" : "Create your account"}</h1>
       <p className="auth__sub">
-        {joining
+        {invite
+          ? `${invite.owner ? `${invite.owner} invited you to` : "You're joining"} “${invite.name}”. ${flow === "signIn" ? "Sign in" : "Create a free account"} and you're in.`
+          : joining
           ? "You've been invited to a workspace. Sign in or create an account to join it."
           : flow === "signIn"
             ? "Welcome back. Your settings and workspaces are waiting."

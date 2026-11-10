@@ -197,7 +197,7 @@ try {
       // Sign up from the viewer, then land in the workspace as a member.
       await C.js("[...document.querySelectorAll('button')].find(b=>b.textContent==='Sign up to join').click(), true");
       await until(async () => await C.js("!!document.querySelector('input[name=name]')"), 15000, "sign-up form");
-      assert.match(await C.js("document.body.innerText"), /invited to a workspace/);
+      await until(async () => /alice invited you to “multiplayer-ui”/.test(await C.js("document.body.innerText")), 8000, "signup names the workspace");
       await C.js(`(() => {
         const set = (sel, v) => { const el = document.querySelector(sel); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); };
         set('input[name=name]', 'Carl'); set('input[name=email]', 'carl-${id}@test.dev'); set('input[name=password]', 'carl-pass-123');

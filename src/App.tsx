@@ -448,6 +448,24 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
   const [focusPane, setFocusPane] = useState<Id<"panes"> | undefined>();
   const [openFile, setOpenFile] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [sidebar, setSidebar] = useState(() => localStorage.getItem("tandem-sidebar") !== "0");
+  const toggleSidebar = () => {
+    setSidebar((s) => {
+      localStorage.setItem("tandem-sidebar", s ? "0" : "1");
+      return !s;
+    });
+  };
+  // Cmd/Ctrl+B toggles the file sidebar, like most editors.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        toggleSidebar();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     const beat = () => {
@@ -463,8 +481,16 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
   const myId = me?.userId;
 
   return (
-    <div className="layout">
+    <div className={`layout ${sidebar ? "" : "layout--nosidebar"}`}>
       <AppBar>
+        <button className="sidebar-toggle" onClick={toggleSidebar} aria-pressed={sidebar}
+          aria-label={sidebar ? "Hide files" : "Show files"} title={`${sidebar ? "Hide" : "Show"} files (⌘B)`}>
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="1.5" y="2.5" width="13" height="11" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
+            <line x1="6" y1="2.5" x2="6" y2="13.5" stroke="currentColor" strokeWidth="1.3" />
+            {sidebar && <rect x="2.2" y="3.2" width="3.2" height="9.6" rx="1.4" fill="currentColor" opacity="0.35" />}
+          </svg>
+        </button>
         <span className="crumb" aria-hidden="true">/</span>
         <span className="ws-name">{ws?.name}</span>
         {readOnly ? (
@@ -486,9 +512,11 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
           ))}
         </div>
       </AppBar>
-      <aside>
-        <FileTree workspaceId={id} open={openFile} onOpen={setOpenFile} />
-      </aside>
+      {sidebar && (
+        <aside>
+          <FileTree workspaceId={id} open={openFile} onOpen={setOpenFile} />
+        </aside>
+      )}
       <main>
         {openFile ? (
           <Editor key={openFile} workspaceId={id} path={openFile} onClose={() => setOpenFile(null)} />

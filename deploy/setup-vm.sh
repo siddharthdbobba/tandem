@@ -53,4 +53,13 @@ WantedBy=multi-user.target
 EOF
 systemctl daemon-reload
 systemctl enable tandem-nft >/dev/null
+
+# Agent browser: Playwright MCP + its own Chromium, readable by every sandbox.
+# Each run launches a fresh in-memory profile, so no agent is ever logged in.
+mkdir -p /opt/tandem-browser/bin /srv/tandem/sessions
+chmod 700 /srv/tandem/sessions
+(cd /opt/tandem-browser && [ -f package.json ] || npm init -y >/dev/null; npm i --silent @playwright/mcp@0.0.85)
+PLAYWRIGHT_BROWSERS_PATH=/opt/tandem-browser/browsers npx --yes --prefix /opt/tandem-browser playwright install chromium
+install -m 755 "$(dirname "$0")/tandem-browser-mcp.mjs" /opt/tandem-browser/bin/tandem-browser-mcp
+chown -R root:root /opt/tandem-browser && chmod -R a+rX /opt/tandem-browser
 echo done

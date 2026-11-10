@@ -338,3 +338,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="tab"]:focus-v
 .whatsnew ul { list-style: none; margin: 0 0 32px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .whatsnew li { position: relative; padding-left: 22px; line-height: 1.5; color: var(--color-ink-2); }
 .whatsnew li::before { content: "▲"; position: absolute; left: 0; top: 2px; font-size: 10px; color: var(--color-accent); }
+
+/* CSV/TSV table preview */
+.viewer--table { overflow: auto; padding: 16px; }
+.sheet { border-collapse: collapse; font-size: var(--text-sm); min-width: 50%; }
+.sheet th, .sheet td { border: 1px solid var(--color-rule); padding: 6px 10px; text-align: left; vertical-align: top; white-space: pre-wrap; }
+.sheet th { position: sticky; top: 0; background: var(--color-paper-2); font-weight: 600; color: var(--color-ink); }
+.sheet tbody tr:nth-child(even) td { background: var(--color-paper-2); }
+.sheet td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono); font-size: 12.5px; }
+.sheet__meta { margin-top: 8px; font-size: var(--text-xs); }
+.viewer.viewer--table { display: block; padding: 20px 24px; }

@@ -368,6 +368,19 @@ try {
     await alice.mutation(api.workspaces.rename, { workspaceId: wsId, name: "multiplayer-ui" });
   });
 
+  await test("CSV files preview as a table (quoted commas, numbers right-aligned)", async () => {
+    await alice.mutation(api.files.save, { workspaceId: wsId, path: "budget.csv", content: 'Item,Who,Cost\nCampsite,"Maya, Sid",$36\nGas,Bob,"$1,200.50"\n"Snacks ""misc""",Alice,12\n' });
+    await A.send("Page.navigate", { url: `${UI}/#/w/${wsId}` });
+    await until(async () => await A.js("[...document.querySelectorAll('.file__name')].some(f=>f.textContent.startsWith('budget.csv'))"), 10000, "budget.csv in tree");
+    await A.js("[...document.querySelectorAll('.file')].find(f=>f.querySelector('.file__name').textContent.startsWith('budget.csv')).click(), true");
+    await until(async () => await A.js("!!document.querySelector('.sheet')"), 8000, "table rendered");
+    assert.equal(await A.js("[...document.querySelectorAll('.sheet th')].map(t=>t.textContent).join('|')"), "Item|Who|Cost");
+    assert.equal(await A.js("[...document.querySelectorAll('.sheet tbody tr')][0].children[1].textContent"), "Maya, Sid");
+    assert.equal(await A.js("[...document.querySelectorAll('.sheet tbody tr')][2].children[0].textContent"), 'Snacks "misc"');
+    assert.equal(await A.js("[...document.querySelectorAll('.sheet tbody tr')][1].children[2].className"), "num");
+    await A.js("[...document.querySelectorAll('.editor button')].find(b=>b.textContent.includes('panes')).click(), true");
+  });
+
   await test("no page errors in either browser", async () => {
     assert.deepEqual(await A.js("window.__errs"), []);
     assert.deepEqual(await B.js("window.__errs"), []);

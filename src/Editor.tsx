@@ -25,6 +25,7 @@ const kindOf = (path: string, binary: boolean) => {
   if (["mp3", "wav", "ogg", "m4a"].includes(ext)) return "audio";
   if (["md", "markdown"].includes(ext)) return "markdown";
   if (["html", "htm"].includes(ext)) return "html";
+  if (["csv", "tsv"].includes(ext)) return "table";
   return binary ? "binary" : "text";
 };
 
@@ -197,6 +198,47 @@ function HtmlPreview({ workspaceId, code, path, content }: {
   </>;
 }
 
+// CSV/TSV parser that handles quoted fields ("a, b"), doubled quotes and newlines in quotes.
+function parseCsv(text: string, sep: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [], cell = "", quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+      else if (c === '"') quoted = false;
+      else cell += c;
+    } else if (c === '"' && cell === "") quoted = true;
+    else if (c === sep) { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(cell); rows.push(row); row = []; cell = "";
+    } else cell += c;
+  }
+  if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter((r) => r.some((c) => c.trim() !== ""));
+}
+
+// Read-only spreadsheet view; numbers align right. Edit the raw file in Source.
+function TableView({ text, tab }: { text: string; tab: boolean }) {
+  const rows = useMemo(() => parseCsv(text, tab ? "\t" : ","), [text, tab]);
+  if (!rows.length) return <div className="viewer dim">Empty table. Switch to Source to add rows.</div>;
+  const [head, ...body] = rows;
+  const width = Math.max(...rows.map((r) => r.length));
+  const num = (s: string) => /^[-+]?[$€£]?\s?\d[\d,]*(\.\d+)?%?$/.test(s.trim());
+  return (
+    <div className="viewer viewer--table">
+      <table className="sheet">
+        <thead><tr>{Array.from({ length: width }, (_, i) => <th key={i}>{head[i] ?? ""}</th>)}</tr></thead>
+        <tbody>{body.map((r, ri) => (
+          <tr key={ri}>{Array.from({ length: width }, (_, i) => <td key={i} className={num(r[i] ?? "") ? "num" : ""}>{r[i] ?? ""}</td>)}</tr>
+        ))}</tbody>
+      </table>
+      <p className="dim sheet__meta">{body.length} row{body.length === 1 ? "" : "s"} · {width} column{width === 1 ? "" : "s"}</p>
+    </div>
+  );
+}
+
 export function Editor({ workspaceId, path, onClose, onAsk }: { workspaceId: Id<"workspaces">; path: string; onClose: () => void; onAsk?: (prompt: string) => void }) {
   const { code, readOnly } = useView();
   const file = useQuery(api.files.get, { workspaceId, path, code });
@@ -209,7 +251,7 @@ export function Editor({ workspaceId, path, onClose, onAsk }: { workspaceId: Id<
   useEffect(() => { if (file && picked === null) setMode(mode); }, [file, picked, mode]);
   const dirty = draft !== null && draft !== file?.content;
   const value = draft ?? file?.content ?? "";
-  const previewable = kind === "markdown" || kind === "html";
+  const previewable = kind === "markdown" || kind === "html" || kind === "table";
   const showSource = !file?.blob && (!previewable || mode === "source");
   const saveDraft = useCallback(async () => {
     if (draft === null || draft === file?.content) return;
@@ -235,6 +277,7 @@ export function Editor({ workspaceId, path, onClose, onAsk }: { workspaceId: Id<
     {file === undefined ? <div className="viewer"><span className="spin" /></div>
       : file === null ? <div className="viewer dim">This file was removed.</div>
       : showSource ? <CodeEditor content={value} path={path} readOnly={readOnly} onChange={setDraft} onSave={saveDraft} />
+      : kind === "table" ? <TableView text={value} tab={path.toLowerCase().endsWith(".tsv")} />
       : kind === "markdown" ? <div className="viewer viewer--doc"><article className="md doc" dangerouslySetInnerHTML={{ __html: renderMarkdown(value) }} /></div>
       : kind === "html" ? <HtmlPreview workspaceId={workspaceId} code={code} path={path} content={value} />
       : kind === "pdf" && file.url ? <iframe className="viewer viewer--frame" title={path} src={file.url} />

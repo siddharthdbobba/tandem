@@ -48,6 +48,10 @@ await js("[...document.querySelectorAll('.file')].find(f=>f.querySelector('.file
 await shoot("doc.png");
 await shoot("doc-m.png", 390, 844);
 await js("[...document.querySelectorAll('.seg button')].find(b=>b.textContent==='Source')?.click()"); await shoot("doc-m-src.png", 390, 844);
+await u.mutation(api.files.save, { workspaceId: ws, path: "costs.csv", content: "Item,Who,Per person,Total\nCampsite (2 nights),Maya,$18,$72\nGas,Sid,$15,$60\n\"Food, snacks\",Everyone,$25,$100\nBear canister rental,Bob,$5,$20\n" });
+await js("[...document.querySelectorAll('.editor button')].find(b=>b.textContent.includes('panes'))?.click()"); await sleep(1500);
+await js("[...document.querySelectorAll('.file')].find(f=>f.querySelector('.file__name').textContent.startsWith('costs.csv'))?.click()"); await sleep(1500);
+await shoot("table.png");
 await send("Page.navigate", { url: `${UI}/#/settings` }); await sleep(3000);
 await shoot("settings.png");
 await shoot("settings-m.png", 390, 844);

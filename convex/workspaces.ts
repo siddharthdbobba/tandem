@@ -34,7 +34,7 @@ export const list = query({
             ? { at: run._creationTime, text: `${run.author} asked the AI: ${run.prompt}`.slice(0, 90) }
             : null;
       const people = (await ctx.db.query("members").withIndex("by_workspace_user", (q) => q.eq("workspaceId", w._id)).collect()).length;
-      out.push({ _id: w._id, name: w.name, template: w.template, owner: (await getProfile(ctx, w.ownerId))?.name ?? "?", mine: w.ownerId === userId, inviteCode: w.inviteCode, activity, people, at: activity?.at ?? w._creationTime });
+      out.push({ _id: w._id, name: w.name, template: w.template, emoji: w.emoji ?? null, owner: (await getProfile(ctx, w.ownerId))?.name ?? "?", mine: w.ownerId === userId, inviteCode: w.inviteCode, activity, people, at: activity?.at ?? w._creationTime });
     }
     return out.sort((a, b) => b.at - a.at);
   },
@@ -52,7 +52,7 @@ export const get = query({
           .withIndex("by_workspace_user", (q) => q.eq("workspaceId", id).eq("userId", userId))
           .unique())
       : false;
-    return w && { _id: w._id, name: w.name, inviteCode: member ? w.inviteCode : undefined, member, owner: !!userId && w.ownerId === userId, instructions: w.instructions ?? "", template: w.template };
+    return w && { _id: w._id, name: w.name, inviteCode: member ? w.inviteCode : undefined, member, owner: !!userId && w.ownerId === userId, instructions: w.instructions ?? "", template: w.template, emoji: w.emoji ?? null };
   },
 });
 
@@ -73,7 +73,7 @@ export const peek = query({
       const p = await ctx.db.query("profiles").withIndex("by_user", (q) => q.eq("userId", m.userId)).unique();
       if (p) people.push({ name: p.name.split(" ")[0], color: p.color });
     }
-    return { _id: w._id, name: w.name, template: w.template ?? null, owner: owner?.name.split(" ")[0] ?? null, people };
+    return { _id: w._id, name: w.name, template: w.template ?? null, emoji: w.emoji ?? null, owner: owner?.name.split(" ")[0] ?? null, people };
   },
 });
 
@@ -129,6 +129,17 @@ export const rename = mutation({
     name = name.trim();
     if (!name || name.length > 60) throw new Error("name must be 1 to 60 chars");
     await ctx.db.patch(workspaceId, { name });
+  },
+});
+
+// Workspace icon: any single emoji (short string, no letters or digits).
+export const setEmoji = mutation({
+  args: { workspaceId: v.id("workspaces"), emoji: v.string() },
+  handler: async (ctx, { workspaceId, emoji }) => {
+    await requireMember(ctx, workspaceId);
+    emoji = emoji.trim();
+    if (!emoji || emoji.length > 16 || /[\p{L}\p{N}\s<>]/u.test(emoji)) throw new Error("pick a single emoji");
+    await ctx.db.patch(workspaceId, { emoji });
   },
 });
 

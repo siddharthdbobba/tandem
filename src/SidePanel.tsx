@@ -9,6 +9,11 @@ import { ExportButton } from "./Export";
 // Same set the server allows (convex/chat.ts REACTIONS).
 const REACTIONS = ["👍", "❤️", "😂", "🎉", "👀", "🏔️"];
 
+// Icons to pick for a workspace (Settings tab).
+// Default per template, matching Home (src/App.tsx TEMPLATE_ICON).
+const TPL_EMOJI: Record<string, string> = { trip: "🏔️", school: "📚", app: "🛠️", study: "🧠", party: "🎉", side: "🚀" };
+const WS_EMOJI = ["🏔️", "🏕️", "🌲", "🌊", "✈️", "🚐", "📚", "🧠", "🛠️", "🚀", "🎉", "🍕", "🎵", "🏀", "💸", "✨"];
+
 // Right-hand panel in a workspace: team chat (default) and workspace settings.
 export function SidePanel({ workspaceId, onClose, tab, setTab, unread }: {
   workspaceId: Id<"workspaces">;
@@ -198,6 +203,7 @@ function WorkspaceSettings({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
   const ws = useQuery(api.workspaces.get, { id: workspaceId, code });
   const members = useQuery(api.workspaces.members, { workspaceId, code });
   const rename = useMutation(api.workspaces.rename);
+  const setEmoji = useMutation(api.workspaces.setEmoji);
   const setInstructions = useMutation(api.workspaces.setInstructions);
   const resetLink = useMutation(api.workspaces.resetLink);
   const leave = useMutation(api.workspaces.leave);
@@ -217,6 +223,16 @@ function WorkspaceSettings({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
             onClick={async () => { await rename({ workspaceId, name: name! }); setName(null); flash("Renamed"); }}>Save</button>}
         </div>
       </label>
+
+      <div className="field">Icon
+        <div className="emoji-row" role="radiogroup" aria-label="Workspace icon">
+          {WS_EMOJI.map((e) => (
+            <button key={e} type="button" role="radio" aria-checked={(ws.emoji ?? TPL_EMOJI[ws.template ?? ""] ?? "") === e} disabled={readOnly}
+              className={`ghost emoji-pick ${(ws.emoji ?? TPL_EMOJI[ws.template ?? ""] ?? "") === e ? "on" : ""}`}
+              onClick={async () => { await setEmoji({ workspaceId, emoji: e }); flash("Icon updated"); }}>{e}</button>
+          ))}
+        </div>
+      </div>
 
       <label className="field">How the AI should work here
         <em>Sent with every prompt, for everyone. e.g. "Keep a budget under $300 each" or "Write at a 10th grade level".</em>

@@ -55,6 +55,8 @@ await u.mutation(api.chat.react, { messageId: msgs[0]._id, emoji: "👍" });
 await send("Page.navigate", { url: `${UI}/#/w/${ws}` }); await sleep(3000);
 await js("localStorage.setItem('tandem-tour-done','1'); [...document.querySelectorAll('.panel-toggle')].find(b=>b.textContent.includes('Chat'))?.click()"); await sleep(1500);
 await shoot("chat.png");
+await js("[...document.querySelectorAll('.side__tabs button')].find(b=>b.textContent==='Workspace')?.click()"); await sleep(800);
+await shoot("ws-settings.png");
 await js("document.querySelector('.side__close')?.click()");
 // "While you were away": a friend edits and chats after our last visit.
 const maya = await account(`shots-maya-${id}@test.dev`, pw, "Maya");

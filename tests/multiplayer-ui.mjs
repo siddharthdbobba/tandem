@@ -291,6 +291,9 @@ try {
     await until(async () => await A.js("!!document.querySelector('.chat__log .mentions-me blockquote')"), 8000, "alice sees reply with quote");
     await B.js("[...document.querySelectorAll('.side__tabs button')].find(b=>b.textContent==='Workspace').click(), true");
     await until(async () => /alice/.test(await B.js("document.querySelector('.members')?.innerText ?? ''")), 8000, "members list");
+    // Bob picks a workspace icon; alice's header updates live.
+    await B.js("[...document.querySelectorAll('.emoji-pick')].find(b=>b.textContent==='🌊').click(), true");
+    await until(async () => (await A.js("document.querySelector('.ws-emoji')?.textContent")) === "🌊", 8000, "alice sees new icon");
     await B.js("document.querySelector('.side__close').click(), true");
     await A.js("document.querySelector('.side__close').click(), true");
   });

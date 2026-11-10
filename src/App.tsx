@@ -326,7 +326,7 @@ function Home() {
               {workspaces.map((w) => (
                 <li key={w._id}>
                   <a href={`#/w/${w._id}`} className="wslist__row">
-                    <span className="wslist__icon" aria-hidden="true">{TEMPLATE_ICON[w.template ?? "blank"] ?? "⛺"}</span>
+                    <span className="wslist__icon" aria-hidden="true">{w.emoji ?? TEMPLATE_ICON[w.template ?? "blank"] ?? "⛺"}</span>
                     <span className="wslist__text">
                       <span className="wslist__name">{w.name}</span>
                       {w.activity && <span className="wslist__activity">{w.activity.text} · {ago(w.activity.at)}</span>}
@@ -551,7 +551,7 @@ function Viewer({ code }: { code: string }) {
       <div className="invite">
         <a href="#/" className="brand invite__brand"><PeakMark />Tandem</a>
         <div className="invite__card">
-          <div className="invite__icon" aria-hidden="true">{TEMPLATE_ICON[ws.template ?? "blank"] ?? "⛺"}</div>
+          <div className="invite__icon" aria-hidden="true">{ws.emoji ?? TEMPLATE_ICON[ws.template ?? "blank"] ?? "⛺"}</div>
           <p className="eyebrow">{ws.owner ? `${ws.owner} invited you to` : "You're invited to"}</p>
           <h1>{ws.name}</h1>
           {ws.people.length > 0 && (
@@ -697,6 +697,7 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
           </svg>
         </button>
         <span className="crumb" aria-hidden="true">/</span>
+        {ws && <span className="ws-emoji" aria-hidden="true">{ws.emoji ?? TEMPLATE_ICON[ws.template ?? "blank"] ?? "⛺"}</span>}
         <span className="ws-name">{ws?.name}</span>
         {readOnly ? (
           <span className="viewing-pill">View only</span>

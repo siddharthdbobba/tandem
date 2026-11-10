@@ -53,6 +53,7 @@ export default defineSchema({
     ownerId: v.id("users"),
     inviteCode: v.string(),
     template: v.optional(v.string()), // starter template id (trip, school, app, blank)
+    emoji: v.optional(v.string()), // icon picked by members; falls back to the template's
     instructions: v.optional(v.string()), // how the agent should behave here, sent with every prompt
   }).index("by_invite", ["inviteCode"]),
 

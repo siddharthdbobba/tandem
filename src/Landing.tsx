@@ -36,7 +36,12 @@ export default function Landing() {
           <li><span className="steps__n">03</span><div><h3>Ask the AI together</h3><p>Everyone sees it work live and can guide it mid-task.</p></div></li>
         </ol></section>
         <section className="lp-section lp-features" aria-label="Workspace features"><div>Shared files &amp; docs <span>PDFs, images, notes</span></div><div>A browser the AI drives <span>Everyone can watch</span></div><div>Claude or ChatGPT <span>Switch models anytime</span></div><div>Steer mid-task <span>Jump in when it matters</span></div></section>
-        <section className="lp-trust"><p>Runs on your own Claude or ChatGPT subscription. Your logins never leave your private sandbox. <a href="#/privacy">Privacy</a></p></section>
+        <section className="lp-cta" aria-labelledby="cta">
+          <h2 id="cta" className="lp-h2">Round up your crew.</h2>
+          <p>Start a workspace in a minute, then send the link. No new AI bill: it runs on the Claude or ChatGPT plan you already have.</p>
+          <a href="#/signup" className="btn btn--primary btn--lg">Start a workspace</a>
+          <p className="lp-cta__fine">Your AI login stays in a private sandbox only your prompts use. <a href="#/privacy">Privacy</a></p>
+        </section>
       </main>
       <footer className="lp-foot"><RidgeDivider /><div><span className="brand"><PeakMark />Tandem</span><nav aria-label="Footer"><a href="#/privacy">Privacy</a><a href={GITHUB} target="_blank" rel="noreferrer">GitHub</a></nav></div></footer>
     </div>

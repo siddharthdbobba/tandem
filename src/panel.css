@@ -190,3 +190,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="tab"]:focus-v
 @keyframes tour-in { from { opacity: 0; transform: translateY(-4px); } }
 @media (max-width: 640px) { .tour { flex-wrap: wrap; } .tour__actions { width: 100%; justify-content: flex-end; } }
 @media (prefers-reduced-motion: reduce) { .tour { animation: none; } }
+
+/* Landing: steps across on wide screens, closing call to action */
+@media (min-width: 900px) {
+  .lp-how .steps { flex-direction: row; gap: var(--space-xl); }
+  .lp-how .steps li { flex: 1; grid-template-columns: minmax(0, 1fr); gap: var(--space-sm); }
+}
+.lp-cta { max-width: 720px; margin: 0 auto; padding: var(--space-3xl) var(--space-lg); text-align: center; display: flex; flex-direction: column; align-items: center; gap: var(--space-md); }
+.lp-cta .lp-h2 { max-width: none; }
+.lp-cta > p { color: var(--color-muted); line-height: 1.6; max-width: 52ch; }
+.lp-cta__fine { font-size: var(--text-sm); margin-top: var(--space-sm); }
+.lp-cta__fine a { color: var(--color-accent); font-weight: 500; }

@@ -3,6 +3,7 @@ import { PeakMark } from "./art";
 import { RunChanges } from "./Changes";
 import { Editor } from "./Editor";
 import { ViewCtx, goJoin, useView } from "./view";
+import { SidePanel } from "./SidePanel";
 import { useEffect, useRef, useState } from "react";
 import { Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
@@ -76,7 +77,7 @@ function SignIn({ initial }: { initial: "signIn" | "signUp" }) {
   const [flow, setFlow] = useState<"signIn" | "signUp">(initial);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  useEffect(() => setFlow(initial), [initial]);
+  useEffect(() => { setFlow(initial); }, [initial]);
   const joining = !!sessionStorage.getItem("tandem-join");
   const methods = useQuery(api.authInfo.methods);
   return (
@@ -479,6 +480,19 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
   const [focusPane, setFocusPane] = useState<Id<"panes"> | undefined>();
   const [openFile, setOpenFile] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // Right panel: team chat or workspace settings. Remembered per device.
+  const [panel, setPanel] = useState<"chat" | "settings" | null>(() => (localStorage.getItem("tandem-panel") as "chat" | "settings" | null) ?? null);
+  useEffect(() => { if (panel) localStorage.setItem("tandem-panel", panel); else localStorage.removeItem("tandem-panel"); }, [panel]);
+  const togglePanel = (t: "chat" | "settings") => setPanel((p) => (p === t ? null : t));
+  // Unread chat: messages since you last had the chat open.
+  const msgs = useQuery(api.chat.list, { workspaceId: id, code });
+  const seenKey = `tandem-seen-${id}`;
+  const [seen, setSeen] = useState(() => Number(localStorage.getItem(seenKey) ?? 0));
+  const lastAt = msgs?.at(-1)?.at ?? 0;
+  useEffect(() => {
+    if (panel === "chat" && lastAt > seen) { setSeen(lastAt); localStorage.setItem(seenKey, String(lastAt)); }
+  }, [panel, lastAt, seen, seenKey]);
+  const unread = msgs?.filter((m) => m.at > seen && m.userId !== me?.userId).length ?? 0;
   const [sidebar, setSidebar] = useState(() => localStorage.getItem("tandem-sidebar") !== "0");
   const toggleSidebar = () => {
     setSidebar((s) => {
@@ -512,7 +526,7 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
   const myId = me?.userId;
 
   return (
-    <div className={`layout ${sidebar ? "" : "layout--nosidebar"}`}>
+    <div className={`layout ${sidebar ? "" : "layout--nosidebar"} ${panel ? "layout--panel" : ""}`}>
       <AppBar>
         <button className="sidebar-toggle" onClick={toggleSidebar} aria-pressed={sidebar}
           aria-label={sidebar ? "Hide files" : "Show files"} title={`${sidebar ? "Hide" : "Show"} files (⌘B)`}>
@@ -542,6 +556,15 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
             </span>
           ))}
         </div>
+        <button className={`panel-toggle ${panel ? "on" : ""}`} aria-pressed={!!panel}
+          onClick={() => togglePanel("chat")} title="Team chat">
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" /></svg>
+          Chat{unread > 0 && panel !== "chat" ? <span className="side__badge">{unread}</span> : null}
+        </button>
+        <button className="panel-toggle icon" aria-label="Workspace settings" title="Workspace settings"
+          onClick={() => togglePanel("settings")}>
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" strokeWidth="1.3" /><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M3.6 12.4 5 11M11 5l1.4-1.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
+        </button>
       </AppBar>
       {sidebar && (
         <aside>
@@ -577,6 +600,9 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
           </>
         )}
       </main>
+      {panel && (
+        <SidePanel workspaceId={id} tab={panel} setTab={(t) => setPanel(t)} onClose={() => setPanel(null)} unread={unread} />
+      )}
     </div>
   );
 }

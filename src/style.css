@@ -725,3 +725,17 @@ aside { border-right: var(--rule); overflow: auto; background: var(--color-paper
 .diff__row.gap { color: var(--color-muted); background: var(--color-paper-2); font-style: italic; }
 .diff__sign { display: inline-block; width: 14px; color: inherit; opacity: .7; user-select: none; }
 .diff__actions { display: flex; gap: var(--space-sm); align-items: center; padding: 6px 10px; border-top: var(--rule); background: var(--color-paper-2); }
+
+/* editor (codemirror + preview) */
+.cm-wrap { flex: 1; min-height: 0; overflow: auto; padding: 0; }
+.cm-wrap .cm-editor { min-height: 100%; background: #fff; color: var(--color-ink); }
+.cm-wrap .cm-scroller { font-family: var(--font-mono); font-size: 13px; line-height: 1.6; }
+.cm-wrap .cm-content { caret-color: #2f5d4a; padding: var(--space-md) 0; }
+.cm-wrap .cm-gutters { background: var(--color-paper-2); color: var(--color-muted); border-right: var(--rule); }
+.cm-wrap .cm-activeLineGutter { background: rgba(47, 93, 74, .08); }
+.cm-wrap .cm-activeLine { background: rgba(47, 93, 74, .06); }
+.cm-wrap .cm-selectionBackground, .cm-wrap .cm-content ::selection { background: rgba(47, 93, 74, .15) !important; }
+.cm-wrap .cm-cursor, .cm-wrap .cm-dropCursor { border-left-color: #2f5d4a; }
+.cm-wrap .cm-focused { outline: none; }
+.preview-tools { display: flex; justify-content: flex-end; gap: 4px; padding: 4px var(--space-sm); border-bottom: var(--rule); }
+.preview-tools .ghost { font-size: var(--text-xs); }

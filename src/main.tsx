@@ -4,6 +4,7 @@ import { ConvexReactClient } from "convex/react";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import App from "./App";
 import "./style.css";
+import "./panel.css";
 
 // Default: the Convex backend is served from the same host on port 10000.
 const url =

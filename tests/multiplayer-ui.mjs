@@ -39,11 +39,15 @@ async function browser(name, port) {
     return r.result.value;
   };
   await send("Page.enable");
-  await send("Page.addScriptToEvaluateOnNewDocument", { source: "window.__errs=[];addEventListener('error',e=>__errs.push(e.message));" });
+  await send("Page.addScriptToEvaluateOnNewDocument", { source: "window.__errs=[];addEventListener('error',e=>__errs.push(e.message+' @ '+String(e.error&&e.error.stack||'').slice(0,300)));" });
   return { proc, ws, send, js, name };
 }
 
 // Sets a React-controlled textarea's value so onChange fires.
+// CodeMirror helpers: read the doc text, and replace it like a user typing.
+const cmText = "(() => { const c = document.querySelector('.cm-content'); return c ? [...c.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n') : null; })()";
+const cmType = (text) => `(() => { const c = document.querySelector('.cm-content'); c.focus(); document.execCommand('selectAll'); document.execCommand('insertText', false, ${JSON.stringify(text)}); return true; })()`;
+const cmReadOnly = "document.querySelector('.cm-content')?.getAttribute('contenteditable') === 'false'";
 const typeInto = (selector, text) => `(() => {
   const el = ${selector};
   const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
@@ -98,10 +102,10 @@ try {
     const open = (b) => b.js("[...document.querySelectorAll('.file')].find(f=>f.textContent.startsWith('shared.txt')).click(), true");
     await until(async () => (await B.js("!!document.querySelector('.file')")), 10000, "tree");
     await open(A); await open(B);
-    await until(async () => (await B.js("document.querySelector('textarea.code')?.value")) === "v1", 10000, "bob sees v1");
-    await A.js(typeInto("document.querySelector('textarea.code')", "v2 from alice"));
+    await until(async () => (await B.js(cmText)) === "v1", 10000, "bob sees v1");
+    await A.js(cmType("v2 from alice"));
     await A.js("[...document.querySelectorAll('.editor button')].find(b=>b.textContent==='Save').click(), true");
-    await until(async () => (await B.js("document.querySelector('textarea.code')?.value")) === "v2 from alice", 10000, "bob sees v2");
+    await until(async () => (await B.js(cmText)) === "v2 from alice", 10000, "bob sees v2");
     const f = await alice.query(api.files.get, { workspaceId: wsId, path: "shared.txt" });
     assert.equal(f.updatedBy, "alice");
     await A.js("[...document.querySelectorAll('.editor button')].find(b=>b.textContent.includes('panes')).click(), true");
@@ -112,11 +116,11 @@ try {
     const open = (b) => b.js("[...document.querySelectorAll('.file')].find(f=>f.textContent.startsWith('shared.txt')).click(), true");
     await open(A); await open(B);
     await sleep(1000);
-    await B.js(typeInto("document.querySelector('textarea.code')", "bob draft"));
+    await B.js(cmType("bob draft"));
     await carol.mutation(api.files.save, { workspaceId: wsId, path: "shared.txt", content: "v3 from api" });
     await sleep(2000);
-    assert.equal(await B.js("document.querySelector('textarea.code').value"), "bob draft");
-    assert.equal(await A.js("document.querySelector('textarea.code').value"), "v3 from api");
+    assert.equal(await B.js(cmText), "bob draft");
+    assert.equal(await A.js(cmText), "v3 from api");
     await A.js("[...document.querySelectorAll('.editor button')].find(b=>b.textContent.includes('panes')).click(), true");
     await B.js("[...document.querySelectorAll('.editor button')].find(b=>b.textContent.includes('panes')).click(), true");
   });
@@ -156,7 +160,7 @@ try {
       assert.equal(await C.js("document.querySelector('.viewing-pill')?.textContent"), "View only");
       // Opening a file is read-only too.
       await C.js("[...document.querySelectorAll('.file')].find(f=>f.textContent.startsWith('shared.txt')).click(), true");
-      await until(async () => await C.js("document.querySelector('textarea.code')?.readOnly === true"), 10000, "read-only editor");
+      await until(async () => await C.js(cmReadOnly), 10000, "read-only editor");
       await C.js("[...document.querySelectorAll('.editor button')].find(b=>b.textContent.includes('panes')).click(), true");
       // Sign up from the viewer, then land in the workspace as a member.
       await C.js("[...document.querySelectorAll('button')].find(b=>b.textContent==='Sign up to join').click(), true");
@@ -209,7 +213,7 @@ try {
     assert.equal(await B.js("!!document.querySelector('.viewer--doc strong')"), true);
     assert.equal(await B.js("!!document.querySelector('.viewer--doc script') || !!window.__pwned"), false, "markdown is sanitized");
     await B.js("[...document.querySelectorAll('.seg button')].find(b=>b.textContent==='Source').click(), true");
-    await until(async () => (await B.js("document.querySelector('textarea.code')?.value ?? ''")).startsWith("# Hello"), 5000, "source view");
+    await until(async () => ((await B.js(cmText)) ?? "").startsWith("# Hello"), 5000, "source view");
     await back();
   });
 
@@ -223,6 +227,24 @@ try {
     await until(async () => (await A.js("document.querySelector('.picker__chip').textContent")).includes("high"), 3000, "chip shows effort");
     await A.js("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })), true");
     await until(async () => !(await A.js("!!document.querySelector('.picker__menu')")), 3000, "menu closes");
+  });
+
+  await test("team chat: alice's message appears live for bob with an unread badge; settings tab shows people", async () => {
+    await A.js("[...document.querySelectorAll('.panel-toggle')].find(b=>b.textContent.includes('Chat')).click(), true");
+    await until(async () => await A.js("!!document.querySelector('.chat__box textarea')"), 8000, "chat opens");
+    // Bob keeps chat closed so he gets an unread badge.
+    await B.js("localStorage.removeItem('tandem-panel'); true");
+    await A.js(typeInto("document.querySelector('.chat__box textarea')", "who's bringing the stove?"));
+    await A.js("document.querySelector('.chat__box').requestSubmit(), true");
+    await until(async () => /who's bringing the stove/.test(await A.js("document.querySelector('.chat__log').innerText")), 8000, "alice sees own msg");
+    await until(async () => (await B.js("document.querySelector('.panel-toggle .side__badge')?.textContent")) === "1", 15000, "bob unread badge");
+    await B.js("[...document.querySelectorAll('.panel-toggle')].find(b=>b.textContent.includes('Chat')).click(), true");
+    await until(async () => /who's bringing the stove/.test(await B.js("document.querySelector('.chat__log')?.innerText ?? ''")), 8000, "bob reads it");
+    await until(async () => !(await B.js("!!document.querySelector('.panel-toggle .side__badge')")), 5000, "badge clears");
+    await B.js("[...document.querySelectorAll('.side__tabs button')].find(b=>b.textContent==='Workspace').click(), true");
+    await until(async () => /alice/.test(await B.js("document.querySelector('.members')?.innerText ?? ''")), 8000, "members list");
+    await B.js("document.querySelector('.side__close').click(), true");
+    await A.js("document.querySelector('.side__close').click(), true");
   });
 
   await test("no page errors in either browser", async () => {

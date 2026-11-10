@@ -66,11 +66,31 @@ process.stdin.on("data", (chunk) => {
     inp = inp.slice(i + 1);
     try {
       const msg = JSON.parse(line);
-      if (msg.method === "tools/call" && msg.id !== undefined && msg.params?.name !== "browser_take_screenshot") pending.add(msg.id);
+      if (msg.method === "tools/call" && msg.id !== undefined && msg.params?.name !== "browser_take_screenshot") {
+        // Daily soft cap per person, so one account can't hammer the web from our server.
+        if (!underCap()) {
+          process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { isError: true, content: [{ type: "text",
+            text: `Daily browser limit reached (${CAP} actions). It resets tomorrow. Tell the user, and use webfetch/websearch instead if possible.` }] } }) + "\n");
+          continue;
+        }
+        pending.add(msg.id);
+      }
     } catch {}
     child.stdin.write(line + "\n");
   }
 });
+
+const CAP = Number(process.env.TANDEM_BROWSE_CAP ?? 200);
+const capFile = path.join(process.env.HOME ?? "/tmp", ".tandem-browse-count.json");
+function underCap() {
+  const today = new Date().toISOString().slice(0, 10);
+  let c = { day: today, n: 0 };
+  try { const r = JSON.parse(fs.readFileSync(capFile, "utf8")); if (r.day === today) c = r; } catch {}
+  if (c.n >= CAP) return false;
+  c.n++;
+  try { fs.writeFileSync(capFile, JSON.stringify(c)); } catch {}
+  return true;
+}
 process.stdin.on("end", () => child.stdin.end());
 child.on("exit", (code) => process.exit(code ?? 0));
 

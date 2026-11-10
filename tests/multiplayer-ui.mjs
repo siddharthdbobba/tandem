@@ -136,6 +136,8 @@ try {
     // No subscription connected in this test: both see the clear explanation.
     await until(async () => /subscription isn't connected/.test(await B.js("document.querySelector('.feed').innerText")), 60000, "bob sees error");
     assert.match(await A.js("document.body.innerText"), /Connect your AI subscription/i);
+    await until(async () => await A.js("!!document.querySelector('.ev-connect a[href=\"#/settings\"]')"), 5000, "connect button for prompter");
+    assert.equal(await B.js("!!document.querySelector('.ev-connect a[href=\"#/settings\"]')"), false, "not shown to others");
   });
 
   await test("new pane added by bob appears for alice", async () => {

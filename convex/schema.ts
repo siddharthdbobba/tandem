@@ -157,6 +157,16 @@ export default defineSchema({
     content: v.string(),
   }).index("by_file", ["fileId"]),
 
+  // A single file published as a read-only public page (e.g. the trip itinerary).
+  publishes: defineTable({
+    workspaceId: v.id("workspaces"),
+    path: v.string(),
+    code: v.string(),
+    by: v.string(),
+  })
+    .index("by_code", ["code"])
+    .index("by_workspace_path", ["workspaceId", "path"]),
+
   // Files deleted in the browser; the worker removes them from disk, then drops the row.
   deletions: defineTable({
     workspaceId: v.id("workspaces"),

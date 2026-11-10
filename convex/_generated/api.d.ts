@@ -20,6 +20,7 @@ import type * as lib from "../lib.js";
 import type * as maintenance from "../maintenance.js";
 import type * as presence from "../presence.js";
 import type * as profile from "../profile.js";
+import type * as publish from "../publish.js";
 import type * as templates from "../templates.js";
 import type * as worker from "../worker.js";
 import type * as workspaces from "../workspaces.js";
@@ -43,6 +44,7 @@ declare const fullApi: ApiFromModules<{
   maintenance: typeof maintenance;
   presence: typeof presence;
   profile: typeof profile;
+  publish: typeof publish;
   templates: typeof templates;
   worker: typeof worker;
   workspaces: typeof workspaces;

@@ -4,6 +4,7 @@ import { RunChanges } from "./Changes";
 import { Editor } from "./Editor";
 import { ViewCtx, goJoin, useView } from "./view";
 import { SidePanel } from "./SidePanel";
+import { PublicPage } from "./Publish";
 import Privacy from "./Privacy";
 import { Palette, type Command } from "./Palette";
 import { useEffect, useRef, useState } from "react";
@@ -49,6 +50,9 @@ function useRoute() {
 }
 
 export default function App() {
+  // Published pages are public and identical for everyone, signed in or not.
+  const route = useRoute();
+  if (route.kind === "p" && route.arg) return <PublicPage code={route.arg} />;
   return (
     <>
       <AuthLoading>
@@ -786,6 +790,16 @@ function Pane({
                 r.events.slice(i + 1).some((x) => x.kind === "todo") ? null : <TodoCard key={e._id} text={e.text} live={r.status === "running"} />
               ) : e.kind === "message" ? (
                 <div key={e._id} className="ev message md" dangerouslySetInnerHTML={{ __html: renderMarkdown(e.text) }} />
+              ) : e.kind === "error" && /subscription isn't connected/.test(e.text) ? (
+                <div key={e._id} className="ev error ev-connect">
+                  <span>{e.text.replace(/ Connect it in Settings, then send this again\.$/, "")}</span>
+                  {r.userId === myId && !readOnly && (
+                    <span className="ev-connect__actions">
+                      <a className="btn btn--primary btn--sm" href="#/settings">Connect in Settings</a>
+                      <button className="btn btn--ghost btn--sm" onClick={() => submit({ paneId: pane._id, prompt: r.prompt })}>Try again</button>
+                    </span>
+                  )}
+                </div>
               ) : (
                 <pre key={e._id} className={`ev ${e.kind}`}>
                   {tidyPaths(e.text)}

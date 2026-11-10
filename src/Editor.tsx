@@ -14,6 +14,7 @@ import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import { renderMarkdown } from "./markdown";
 import { useView } from "./view";
+import { PublishButton } from "./Publish";
 
 const kindOf = (path: string, binary: boolean) => {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
@@ -209,6 +210,7 @@ export function Editor({ workspaceId, path, onClose }: { workspaceId: Id<"worksp
         <button role="tab" aria-selected={mode === "source"} className={mode === "source" ? "on" : ""} onClick={() => setMode("source")}>Source</button>
       </div>}
       {file?.url && <a className="textlink" href={file.url} target="_blank" rel="noreferrer" download={path.split("/").pop()}>Download</a>}
+      {file && <PublishButton workspaceId={workspaceId} path={path} code={code} readOnly={readOnly} />}
       {showSource && (readOnly ? <span className="viewing-pill">Read only</span> : <button disabled={!dirty} onClick={saveDraft}>{dirty ? "Save" : "Saved"}</button>)}
     </div>
     {file === undefined ? <div className="viewer"><span className="spin" /></div>

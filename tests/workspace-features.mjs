@@ -182,5 +182,26 @@ await test("polls: create, vote, move vote, unvote; viewers read; @ai sees talli
   await assert.rejects(ann.mutation(api.workspaces.renamePane, { paneId: pane._id, title: "  " }));
 });
 
+await test("publish: a single file becomes a public page; only that file; unpublish kills it", async () => {
+  const ws = await ann.mutation(api.workspaces.create, { name: "Pub", template: "trip" });
+  await assert.rejects(cat.mutation(api.publish.publish, { workspaceId: ws, path: "itinerary.md" }));
+  await assert.rejects(ann.mutation(api.publish.publish, { workspaceId: ws, path: "nope.md" }));
+  const code = await ann.mutation(api.publish.publish, { workspaceId: ws, path: "itinerary.md" });
+  assert.equal(await ann.mutation(api.publish.publish, { workspaceId: ws, path: "itinerary.md" }), code, "idempotent");
+  const page = await anon.query(api.publish.view, { code });
+  assert.equal(page.path, "itinerary.md");
+  assert.match(page.content, /Trip itinerary/);
+  assert.equal(page.workspace, "Pub");
+  // The page code is not a workspace code: it doesn't open the workspace.
+  await assert.rejects(anon.query(api.files.tree, { workspaceId: ws, code }));
+  // Live: edits show up.
+  await ann.mutation(api.files.save, { workspaceId: ws, path: "itinerary.md", content: "# Updated\n" });
+  assert.equal((await anon.query(api.publish.view, { code })).content, "# Updated\n");
+  assert.equal((await ann.query(api.publish.status, { workspaceId: ws, path: "itinerary.md" })).code, code);
+  await ann.mutation(api.publish.unpublish, { workspaceId: ws, path: "itinerary.md" });
+  assert.equal(await anon.query(api.publish.view, { code }), null);
+  assert.equal(await anon.query(api.publish.view, { code: "bogus" }), null);
+});
+
 console.log(results.join("\n"));
 process.exit(results.some((r) => r.startsWith("FAIL")) ? 1 : 0);

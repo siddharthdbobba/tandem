@@ -1,7 +1,8 @@
-node_modules
-dist
-.env*
 *.log
-tests/codex/.chrome
-tests/.chrome-*
+.codex-task-*.md
+.env*
 .wrangler
+dist
+node_modules
+tests/.chrome-*
+tests/codex/.chrome

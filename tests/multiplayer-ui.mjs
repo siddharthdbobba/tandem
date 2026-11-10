@@ -103,6 +103,8 @@ try {
     assert.equal(await A.js("!!document.querySelector('.tour')"), false);
     assert.equal(await A.js("localStorage.getItem('tandem-tour-done')"), "1");
     await B.js("localStorage.setItem('tandem-tour-done','1'), true");
+    // A brand-new pane with no AI connected tells you to connect first.
+    await until(async () => (await A.js("document.querySelector('.pane-empty__connect a')?.getAttribute('href')")) === "#/settings", 8000, "connect nudge in empty pane");
   });
 
   await test("both users see each other in presence", async () => {

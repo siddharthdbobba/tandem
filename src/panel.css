@@ -280,3 +280,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="tab"]:focus-v
 .typing__dots i:nth-child(3) { animation-delay: 0.3s; }
 @keyframes typing-dot { 0%, 60%, 100% { opacity: 0.3; transform: none; } 30% { opacity: 1; transform: translateY(-2px); } }
 @media (prefers-reduced-motion: reduce) { .typing__dots i { animation: none; } }
+
+/* Empty pane: connect nudge for people who haven't linked an AI yet */
+.pane-empty__connect { display: flex; align-items: center; gap: 12px; margin: 12px 0 4px; padding: 10px 12px; border: 1px solid #f3c9a6; border-radius: var(--radius-md); background: #fff6ee; font-size: var(--text-sm); color: var(--color-ink); text-align: left; }
+.pane-empty__connect span { flex: 1; line-height: 1.45; }
+.pane-empty__connect .btn { flex: none; }
+@media (max-width: 520px) { .pane-empty__connect { flex-direction: column; align-items: stretch; } }

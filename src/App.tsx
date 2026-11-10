@@ -879,6 +879,12 @@ function Pane({
           <div className="pane-empty">
             <p className="pane-empty__title">Ask the AI to get started</p>
             <p className="dim">Everyone here sees it work live{readOnly ? "" : ", and can jump in"}.</p>
+            {!readOnly && me && connected.size === 0 && (
+              <div className="pane-empty__connect">
+                <span>First, connect Claude or ChatGPT so the AI runs on your own plan. It takes about 30 seconds.</span>
+                <a className="btn btn--primary btn--sm" href="#/settings">Connect</a>
+              </div>
+            )}
             {!readOnly && suggestions && (
               <div className="chips">
                 {suggestions.map((s) => (

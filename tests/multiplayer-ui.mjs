@@ -178,8 +178,11 @@ try {
       await C.send("Page.navigate", { url: `${UI}/` });
       await until(async () => /shared AI workspace/.test(await C.js("document.body.innerText")), 15000, "landing");
       assert.ok(await C.js("!!document.querySelector('a[href=\"#/signup\"]')"), "landing has a sign-up CTA");
-      // Share link, signed out: the workspace is visible live but read-only.
+      // Share link, signed out: an invite card naming the inviter, then "look around" shows it live, read-only.
       await C.send("Page.navigate", { url: `${UI}/#/join/${inviteCode}` });
+      await until(async () => (await C.js("document.querySelector('.invite__card h1')?.textContent")) === "multiplayer-ui", 15000, "invite card");
+      assert.match(await C.js("document.querySelector('.invite__card').innerText"), /alice invited you/i);
+      await C.js("document.querySelector('.invite__peek').click(), true");
       await until(async () => (await C.js("document.querySelector('.ws-name')?.textContent")) === "multiplayer-ui", 15000, "viewer sees workspace");
       await until(async () => /hello-from-ui/.test(await C.js("document.querySelector('.feed')?.innerText ?? ''")), 10000, "viewer sees others' prompts");
       await until(async () => /shared\.txt/.test(await C.js("document.querySelector('.tree').innerText")), 10000, "viewer sees files");

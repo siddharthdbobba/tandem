@@ -64,7 +64,16 @@ export const peek = query({
       .query("workspaces")
       .withIndex("by_invite", (q) => q.eq("inviteCode", code.trim()))
       .unique();
-    return w && { _id: w._id, name: w.name };
+    if (!w) return null;
+    // For the invite card: who started it and who's in (first names + colors only).
+    const owner = await ctx.db.query("profiles").withIndex("by_user", (q) => q.eq("userId", w.ownerId)).unique();
+    const rows = await ctx.db.query("members").withIndex("by_workspace_user", (q) => q.eq("workspaceId", w._id)).take(12);
+    const people = [];
+    for (const m of rows) {
+      const p = await ctx.db.query("profiles").withIndex("by_user", (q) => q.eq("userId", m.userId)).unique();
+      if (p) people.push({ name: p.name.split(" ")[0], color: p.color });
+    }
+    return { _id: w._id, name: w.name, template: w.template ?? null, owner: owner?.name.split(" ")[0] ?? null, people };
   },
 });
 

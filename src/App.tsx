@@ -486,11 +486,36 @@ function Settings() {
   );
 }
 
-// Signed out with a share link: look it up, then show the workspace read-only.
+// Signed out with a share link: a welcome card first, then the live read-only view.
 function Viewer({ code }: { code: string }) {
   const ws = useQuery(api.workspaces.peek, { code });
+  const [peeking, setPeeking] = useState(() => sessionStorage.getItem(`tandem-peek-${code}`) === "1");
   if (ws === undefined) return <div className="loading"><span className="spin" aria-hidden="true" /> Loading…</div>;
   if (ws === null) return <div className="loading">This link is invalid. <a href="#/" className="textlink">Go home</a></div>;
+  if (!peeking) {
+    return (
+      <div className="invite">
+        <a href="#/" className="brand invite__brand"><PeakMark />Tandem</a>
+        <div className="invite__card">
+          <div className="invite__icon" aria-hidden="true">{TEMPLATE_ICON[ws.template ?? "blank"] ?? "⛺"}</div>
+          <p className="eyebrow">{ws.owner ? `${ws.owner} invited you to` : "You're invited to"}</p>
+          <h1>{ws.name}</h1>
+          {ws.people.length > 0 && (
+            <div className="invite__people">
+              <span className="invite__avatars">
+                {ws.people.slice(0, 6).map((p, i) => <span key={i} className="avatar avatar--sm" style={{ background: p.color }}>{p.name[0]?.toUpperCase()}</span>)}
+              </span>
+              <span>{ws.people.length === 1 ? `${ws.people[0].name} is here` : `${ws.people.slice(0, 2).map((p) => p.name).join(", ")}${ws.people.length > 2 ? ` and ${ws.people.length - 2} more` : ""} are here`}</span>
+            </div>
+          )}
+          <p className="invite__lede">A shared space for your group's files, chat, and an AI that plans, writes and builds while everyone watches.</p>
+          <button className="btn btn--primary btn--lg" onClick={() => goJoin(code)}>Join with a free account</button>
+          <a href="#/signin" className="textlink" onClick={() => sessionStorage.setItem("tandem-join", code)}>I already have an account</a>
+          <button className="ghost invite__peek" onClick={() => { sessionStorage.setItem(`tandem-peek-${code}`, "1"); setPeeking(true); }}>Just look around first →</button>
+        </div>
+      </div>
+    );
+  }
   return (
     <ViewCtx.Provider value={{ code, readOnly: true }}>
       <Workspace id={ws._id} />

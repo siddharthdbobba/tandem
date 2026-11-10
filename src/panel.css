@@ -244,3 +244,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="tab"]:focus-v
 .away button.ghost { appearance: none; border: 0; padding: 0; height: auto; min-height: 0; background: transparent; color: var(--color-accent); font: inherit; font-weight: 500; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .away button.away__dismiss { float: right; margin-left: 12px; color: var(--color-muted); font-size: var(--text-xs); text-decoration: none; }
 
+
+/* Invite landing for signed-out people opening a share link */
+.invite { min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 24px 16px 48px; background: radial-gradient(ellipse at 50% 0%, var(--color-accent-soft), transparent 60%), var(--color-paper); }
+.invite__brand { align-self: flex-start; }
+.invite__card { margin-top: 10vh; width: 100%; max-width: 440px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; padding: 32px 28px; border: 1px solid var(--color-rule); border-radius: 18px; background: var(--color-paper); box-shadow: 0 10px 40px rgb(30 50 40 / 0.08); }
+.invite__icon { font-size: 40px; line-height: 1; }
+.invite__card .eyebrow { margin: 4px 0 0; }
+.invite__card h1 { font-family: var(--font-display); font-size: 2rem; line-height: 1.1; letter-spacing: -0.02em; margin: 0; overflow-wrap: anywhere; }
+.invite__people { display: flex; align-items: center; gap: 8px; color: var(--color-muted); font-size: var(--text-sm); }
+.invite__avatars { display: inline-flex; }
+.invite__avatars .avatar + .avatar { margin-left: -6px; box-shadow: 0 0 0 2px var(--color-paper); }
+.invite__lede { color: var(--color-muted); line-height: 1.55; margin: 4px 0 8px; }
+.invite__card .btn--lg { width: 100%; justify-content: center; }
+.invite__peek { margin-top: 4px; color: var(--color-muted); font-size: var(--text-sm); }

@@ -348,3 +348,4 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="tab"]:focus-v
 .sheet td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono); font-size: 12.5px; }
 .sheet__meta { margin-top: 8px; font-size: var(--text-xs); }
 .viewer.viewer--table { display: block; padding: 20px 24px; }
+.md table { margin: 0.8em 0 1em; } .md ul + table, .md ol + table { margin-top: 1em; }

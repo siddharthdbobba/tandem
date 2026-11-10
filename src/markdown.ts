@@ -1,7 +1,8 @@
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 
-marked.setOptions({ gfm: true, breaks: false });
+// breaks: a single Enter is a new line, the way people write in chat and notes.
+marked.setOptions({ gfm: true, breaks: true });
 
 // Agents see the VM's absolute workspace path. People don't need it.
 export const tidyPaths = (t: string) =>

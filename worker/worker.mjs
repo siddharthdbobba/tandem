@@ -524,4 +524,9 @@ client.onUpdate(api.worker.queued, s, dispatch);
 // Safety net in case a push is dropped while we were busy dispatching.
 setInterval(poll, 3000);
 
+// Heartbeat so the UI can tell "waiting for the AI server" from "queued".
+const ping = () => client.mutation(api.worker.ping, s).catch(() => {});
+ping();
+setInterval(ping, 20000);
+
 log("tandem worker up", URL, ROOT);

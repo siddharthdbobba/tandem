@@ -411,3 +411,20 @@ export const doneDeletion = mutation({
     if (await ctx.db.get(id)) await ctx.db.delete(id);
   },
 });
+
+// Worker heartbeat (every ~20s).
+export const ping = mutation({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    check(secret);
+    const row = await ctx.db.query("workerStatus").first();
+    if (row) await ctx.db.patch(row._id, { seenAt: Date.now() });
+    else await ctx.db.insert("workerStatus", { seenAt: Date.now() });
+  },
+});
+
+// Public: when the worker last checked in (null if never).
+export const lastSeen = query({
+  args: {},
+  handler: async (ctx) => (await ctx.db.query("workerStatus").first())?.seenAt ?? null,
+});

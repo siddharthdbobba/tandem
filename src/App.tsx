@@ -922,6 +922,16 @@ function Pane({
   const running = feed?.find((r) => r.status === "running" || r.status === "queued");
   const live = feed?.find((r) => r.status === "running");
   const steer = useMutation(api.workspaces.steerRun);
+  // The worker pings every 20s. If its ping hasn't changed for over a minute (timed on
+  // this device's clock, so clock skew doesn't matter) while something is queued,
+  // say it's waiting on a restart instead of a bare "queued".
+  const workerSeen = useQuery(api.worker.lastSeen, {});
+  const [pingChangedAt, setPingChangedAt] = useState(Date.now());
+  const [tickNow, setTickNow] = useState(Date.now());
+  const queuedRun = feed?.find((r) => r.status === "queued");
+  useEffect(() => { setPingChangedAt(Date.now()); }, [workerSeen]);
+  useEffect(() => { if (!queuedRun) return; const t = setInterval(() => setTickNow(Date.now()), 5000); return () => clearInterval(t); }, [queuedRun?._id]);
+  const workerDown = !!queuedRun && workerSeen !== undefined && (workerSeen === null || tickNow - pingChangedAt > 60000);
   const eventCount = feed?.reduce((n, r) => n + r.events.length, 0);
 
   useEffect(() => {
@@ -1018,7 +1028,7 @@ function Pane({
               <RunChanges runId={r._id} code={code} readOnly={readOnly} />
             )}
             <div className={`status ${r.status}`}>
-              {r.status === "queued" && "queued"}
+              {r.status === "queued" && (workerDown ? "waiting for the AI server to come back (it's restarting). Your prompt will run automatically." : "queued")}
               {r.status === "running" && (
                 <>
                   <span className="spin" /> working{" "}

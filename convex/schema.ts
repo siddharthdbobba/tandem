@@ -192,6 +192,10 @@ export default defineSchema({
     .index("by_run", ["runId"])
     .index("by_workspace", ["workspaceId"]),
 
+  // One row: when the agent worker last checked in (so the UI can tell people
+  // their prompt is waiting on a restart instead of sitting "queued" silently).
+  workerStatus: defineTable({ seenAt: v.number() }),
+
   // Who is here right now.
   presence: defineTable({
     workspaceId: v.id("workspaces"),

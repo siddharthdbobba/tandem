@@ -1,6 +1,7 @@
 import { StrictMode, Suspense, lazy, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import Landing from "./Landing";
+import { ErrorBoundary } from "./ErrorBoundary";
 import "./style.css";
 import "./panel.css";
 import "./palette.css";
@@ -16,6 +17,9 @@ const needsApp = () =>
   new URLSearchParams(location.search).has("code") ||
   !["", "#", "#/"].includes(location.hash);
 
+// #/__crash throws on purpose so tests can check the crash card.
+function CrashTest(): null { throw new Error("test crash (#/__crash)"); }
+
 function Root() {
   const [app, setApp] = useState(needsApp);
   useEffect(() => {
@@ -24,6 +28,7 @@ function Root() {
     addEventListener("hashchange", on);
     return () => removeEventListener("hashchange", on);
   }, [app]);
+  if (location.hash === "#/__crash") return <CrashTest />;
   if (!app) return <Landing />;
   return (
     <Suspense fallback={<div className="loading"><span className="spin" aria-hidden="true" /> Loading…</div>}>
@@ -34,6 +39,8 @@ function Root() {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <Root />
+    <ErrorBoundary>
+      <Root />
+    </ErrorBoundary>
   </StrictMode>,
 );

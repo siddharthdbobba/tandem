@@ -31,6 +31,9 @@ const home1 = await js("document.body.innerText.includes('What are you working o
 await send("Page.navigate", { url: `${UI}/` }); await sleep(4500);
 const home2 = await js("document.body.innerText.includes('What are you working on')");
 const errs = await js("window.__errs ?? []");
-console.log(JSON.stringify({ landing, bootLoadedForFreshVisitor: bootFresh, signedInHome: home1, returningUserHome: home2 }));
+// 4) A render crash shows the friendly card, not a blank page.
+await send("Page.navigate", { url: `${UI}/#/__crash` }); await send("Page.reload"); await sleep(3000);
+const crashCard = await js("!!document.querySelector('.crash__card') && document.body.innerText.includes('Reload')");
+console.log(JSON.stringify({ landing, bootLoadedForFreshVisitor: bootFresh, signedInHome: home1, returningUserHome: home2, crashCard }));
 sock.close(); proc.kill("SIGKILL"); fs.rmSync(profile, { recursive: true, force: true });
-process.exit(landing && !bootFresh && home1 && home2 ? 0 : 1);
+process.exit(landing && !bootFresh && home1 && home2 && crashCard ? 0 : 1);

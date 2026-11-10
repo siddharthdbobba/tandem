@@ -321,6 +321,11 @@ try {
     await until(async () => (await A.js("document.querySelectorAll('.file').length")) === 1, 5000, "filtered to 1");
     await A.js("document.querySelector('.tree__filter').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })), true");
     await until(async () => (await A.js("document.querySelector('.editor strong')?.textContent")) === "zebra-plan.md", 5000, "opened match");
+    // "Ask AI" from the editor drops a prompt about this file into a pane's box.
+    await until(async () => await A.js("[...document.querySelectorAll('.editor button')].some(b=>b.textContent==='Ask AI')"), 8000, "Ask AI button");
+    await A.js("[...document.querySelectorAll('.editor button')].find(b=>b.textContent==='Ask AI').click(), true");
+    await until(async () => (await A.js("document.querySelector('.prompt-box textarea')?.value")) === "In zebra-plan.md, ", 5000, "prompt prefilled");
+    await A.js("(() => { const t = document.querySelector('.prompt-box textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, ''); t.dispatchEvent(new Event('input', { bubbles: true })); return true; })()");
   });
 
   await test("? opens keyboard shortcuts (not while typing), Esc closes", async () => {

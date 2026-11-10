@@ -197,7 +197,7 @@ function HtmlPreview({ workspaceId, code, path, content }: {
   </>;
 }
 
-export function Editor({ workspaceId, path, onClose }: { workspaceId: Id<"workspaces">; path: string; onClose: () => void }) {
+export function Editor({ workspaceId, path, onClose, onAsk }: { workspaceId: Id<"workspaces">; path: string; onClose: () => void; onAsk?: (prompt: string) => void }) {
   const { code, readOnly } = useView();
   const file = useQuery(api.files.get, { workspaceId, path, code });
   const save = useMutation(api.files.save);
@@ -228,6 +228,7 @@ export function Editor({ workspaceId, path, onClose }: { workspaceId: Id<"worksp
         <button role="tab" aria-selected={mode === "source"} className={mode === "source" ? "on" : ""} onClick={() => setMode("source")}>Source</button>
       </div>}
       {file?.url && <a className="textlink" href={file.url} target="_blank" rel="noreferrer" download={path.split("/").pop()}>Download</a>}
+      {file && !readOnly && onAsk && <button className="ghost" onClick={() => onAsk(`In ${path}, `)} title="Write a prompt about this file">Ask AI</button>}
       {file && <PublishButton workspaceId={workspaceId} path={path} code={code} readOnly={readOnly} />}
       {showSource && (readOnly ? <span className="viewing-pill">Read only</span> : <button disabled={!dirty} onClick={saveDraft}>{dirty ? "Save" : "Saved"}</button>)}
     </div>

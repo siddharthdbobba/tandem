@@ -645,6 +645,8 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
   const [now, setNow] = useState(Date.now());
   const people = useQuery(api.presence.list, { workspaceId: id, now: Math.floor(now / 10000) * 10000, code });
   const [focusPane, setFocusPane] = useState<Id<"panes"> | undefined>();
+  // A prompt started elsewhere (e.g. "Ask AI" in the editor) to drop into a pane's box.
+  const [draft, setDraft] = useState<{ pane?: Id<"panes">; text: string; at: number } | null>(null);
   const [openFile, setOpenFile] = useState<string | null>(null);
   const [tourShowing, setTourShowing] = useState(() => !localStorage.getItem("tandem-tour-done"));
   const [copied, setCopied] = useState(false);
@@ -798,7 +800,8 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
       <main>
         {openFile ? (
           <Suspense fallback={<div className="loading"><span className="spin" aria-hidden="true" /> Opening…</div>}>
-            <Editor key={openFile} workspaceId={id} path={openFile} onClose={() => setOpenFile(null)} />
+            <Editor key={openFile} workspaceId={id} path={openFile} onClose={() => setOpenFile(null)}
+              onAsk={(p) => { setDraft({ pane: focusPane ?? panes?.[0]?._id, text: p, at: Date.now() }); setOpenFile(null); }} />
           </Suspense>
         ) : (
           <>
@@ -815,6 +818,7 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
                   viewers={people?.filter((x) => x.paneId === p._id && x.userId !== myId) ?? []}
                   onFocus={() => setFocusPane(p._id)}
                   canClose={!readOnly && (panes?.length ?? 0) > 1}
+                  draft={draft && draft.pane === p._id ? draft : undefined}
                 />
               ))}
             </div>
@@ -879,12 +883,14 @@ function Pane({
   viewers,
   onFocus,
   canClose,
+  draft,
 }: {
   pane: PaneDoc;
   myId?: string;
   viewers: { name: string; color: string; userId: string }[];
   onFocus: () => void;
   canClose: boolean;
+  draft?: { text: string; at: number };
 }) {
   const { code, readOnly } = useView();
   const feed = useQuery(api.workspaces.paneFeed, { paneId: pane._id, code });
@@ -904,6 +910,11 @@ function Pane({
   const remove = useMutation(api.workspaces.removePane);
   const [text, setText] = useState("");
   const textRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!draft) return;
+    setText(draft.text);
+    setTimeout(() => { const t = textRef.current; if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); t.scrollIntoView({ block: "nearest" }); } }, 50);
+  }, [draft?.at]);
   const [renaming, setRenaming] = useState(false);
   const renamePane = useMutation(api.workspaces.renamePane);
   const suggestions = useQuery(api.workspaces.suggestions, { workspaceId: pane.workspaceId, code });

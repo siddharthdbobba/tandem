@@ -271,6 +271,18 @@ function stepSummary(steps: Ev[]) {
   return parts.join(", ").replace(/^./, (c) => c.toUpperCase());
 }
 
+// Copies an AI reply as markdown, so it pastes cleanly into a text, doc or email.
+function CopyButton({ text }: { text: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button className="ghost copy-btn" aria-label="Copy reply" onClick={async () => {
+      await navigator.clipboard.writeText(text);
+      setDone(true);
+      setTimeout(() => setDone(false), 1500);
+    }}>{done ? "Copied" : "Copy"}</button>
+  );
+}
+
 // "5m ago", "3h ago", "2d ago".
 const ago = (t: number) => {
   const m = Math.round((Date.now() - t) / 60000);
@@ -950,7 +962,10 @@ function Pane({
                 // Only the newest todo snapshot of a run is shown.
                 [...r.events].reverse().find((x) => x.kind === "todo")?._id !== e._id ? null : <TodoCard key={e._id} text={e.text} live={r.status === "running"} />
               ) : e.kind === "message" ? (
-                <div key={e._id} className="ev message md" dangerouslySetInnerHTML={{ __html: renderMarkdown(e.text) }} />
+                <div key={e._id} className="ev-msg">
+                  <div className="ev message md" dangerouslySetInnerHTML={{ __html: renderMarkdown(e.text) }} />
+                  <CopyButton text={e.text} />
+                </div>
               ) : e.kind === "error" && /subscription isn't connected/.test(e.text) ? (
                 <div key={e._id} className="ev error ev-connect">
                   <span>{e.text.replace(/ Connect it in Settings, then send this again\.$/, "")}</span>

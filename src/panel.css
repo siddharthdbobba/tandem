@@ -302,3 +302,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="tab"]:focus-v
 .steps-group > summary:hover { color: var(--color-ink); border-color: var(--color-muted); }
 .steps-group[open] { display: flex; flex-direction: column; gap: 2px; }
 .steps-group[open] > summary { align-self: flex-start; margin-bottom: 4px; }
+
+/* Copy button on AI replies (shows on hover/focus; always visible on touch) */
+.ev-msg { position: relative; }
+.copy-btn { position: absolute; top: 0; right: 0; height: 24px; padding: 0 8px; font-size: var(--text-xs); color: var(--color-muted); border: 1px solid var(--color-rule); border-radius: 6px; background: var(--color-paper); opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
+.ev-msg:hover .copy-btn, .copy-btn:focus-visible { opacity: 1; }
+@media (hover: none) { .copy-btn { position: static; opacity: 1; margin-top: 2px; } }

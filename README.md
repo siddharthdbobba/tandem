@@ -1,12 +1,28 @@
 # Tandem
 
-A multiplayer coding agent. Think Google Drive folder plus a terminal: you sign in, create a workspace, and share an invite link. Everyone in it shares one project directory, opens as many prompt panes as they want, and watches every agent's output stream in live. Files the agents write show up in the sidebar instantly, and anyone can edit them in the browser.
+**Your group's shared AI workspace.** Plan the trip, finish the project, build the thing, together. Everyone in a workspace shares files, a team chat and an AI that researches, writes, browses and builds while the whole group watches and steers it live.
 
-Each person's prompts run through the [Jcode](https://github.com/1jehuang/jcode) agent harness **on that person's own AI subscription** (Claude Pro/Max or ChatGPT Plus/Pro), connected once in Settings and saved to their account. A friend joining from their laptop uses their subscription, not yours.
+Each person's prompts run through the [Jcode](https://github.com/1jehuang/jcode) agent harness **on that person's own AI subscription** (Claude Pro/Max or ChatGPT Plus/Pro), connected once in Settings. A friend joining from their laptop uses their subscription, not yours. No new AI bill.
 
-Built on [Convex](https://convex.dev) (self-hosted, with Convex Auth) plus React and a small Node worker.
+**Live:** https://tandem.siddharthbobba.com · Built on [Convex](https://convex.dev) (self-hosted, with Convex Auth), React and a small Node worker.
 
-**Live:** https://tandem.siddharthbobba.com
+![Tandem workspace](docs/screenshot.png)
+
+## What you can do
+
+- **Start from a template:** trip, school project, study group, event, side project, app, or blank. Each one seeds starter files, AI instructions and suggested prompts.
+- **Ask the AI together.** Everyone sees it work live, can steer it mid-task, and finished runs fold their steps under one line so the answer stands out. Every change it makes has a diff and can be undone, file by file.
+- **The AI can browse.** It drives a real browser and everyone watches the frames live.
+- **Shared files:** a code editor with live HTML preview, markdown and CSV table previews, PDF, image and video viewers, paste from Google Docs as markdown, and zip export. Publish any doc as a clean public page.
+- **Team chat:** `@ai` hands the AI a task, plus @mentions, replies, reactions, polls, a typing indicator and desktop notifications.
+- **Bring people in:** share links open a welcome card ("Maya invited you to Yosemite weekend") with a look-around mode, and use the phone's share sheet on mobile. "While you were away" tells you what changed since your last visit.
+- **Polish:** Cmd+K palette, `?` shortcuts, first-run tour, works on phones, installable (PWA), WCAG AA contrast, and a landing page that loads without the app bundle.
+
+| Home | Team chat |
+|---|---|
+| ![Home](docs/home.png) | ![Chat](docs/chat.png) |
+
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -18,7 +34,6 @@ flowchart LR
 
 The UI is static files on Cloudflare. API traffic goes through a small Cloudflare Worker (`deploy/api-proxy`) to the self-hosted Convex backend, which is exposed only through Tailscale Funnel. The agent worker talks to Convex over localhost, so nothing else on the VM is reachable from the internet.
 
-![screenshot](docs/screenshot.png)
 
 ## How it works
 
@@ -121,21 +136,25 @@ All suites run against a live deployment:
 
 ```bash
 export CONVEX_URL=https://api.tandem.siddharthbobba.com UI_URL=https://tandem.siddharthbobba.com WORKER_HOST=your-vm WORKSPACES_DIR=/srv/tandem/workspaces
-node tests/translator.mjs             # 7: replays real captured jcode runs through the worker (offline)
-node tests/accounts.mjs               # 12: auth, saved settings, membership, per-user sandbox + isolation, connect flow
+node tests/translator.mjs             # 9: replays real captured jcode runs through the worker (offline)
+node tests/accounts.mjs               # 14: auth, saved settings, membership, per-user sandbox + isolation, connect flow
 node tests/smoke.mjs                  # 8: API, path validation, file sync, queueing, presence
 node tests/codex/tandem-e2e.mjs       # 10: adversarial checks, written by Codex
-node tests/multiplayer-ui.mjs         # 6: two real headless browsers signing in through the UI
+node tests/workspace-features.mjs     # 9: templates, chat + @ai, change log + undo, publish, browse cap
+node tests/multiplayer-ui.mjs         # 18: two real headless browsers: presence, live editing, chat, invite flow, editor, CSV, menus
+node tests/security.mjs               # signed-out / non-member probes on every member-only endpoint
+node tests/boot.mjs                   # landing loads without the app; signed-in users skip it
+node tests/a11y.mjs                   # axe-core audit of 6 pages (0 serious/critical)
 node tests/load.mjs                   # burst across many workspaces, concurrency cap
 ```
 
 Checks that need a model to answer (agent writes files, streaming, follow-up context, cancel, load) sign in with a connected account from `TANDEM_TEST_EMAIL` / `TANDEM_TEST_PASSWORD` and are skipped without one. Everything else always runs.
 
-## Limits (it's a toy)
+## Limits
 
-- Tailnet only. Members of a workspace can make agents run shell commands as their own sandbox user, and that user can reach the internet.
-- A member's agent can edit any file in the workspaces they belong to (that's the point of sharing).
-- Text files only, under 400 KB. Binary files and `node_modules`/`.git` are not mirrored.
+- Members of a workspace can make agents run shell commands as their own sandbox user, and that user can reach the internet. The agent browser is capped at 200 actions per person per day.
+- A member's agent can edit any file in the workspaces they belong to (that's the point of sharing). Every AI change can be undone.
+- Text files are mirrored up to 400 KB; images, PDFs and other binaries up to 20 MB go through Convex storage. `node_modules`/`.git` are not mirrored.
 - File edits are last-write-wins, not character-level merging.
 - No email verification or password reset.
 - Self-hosted Convex on a small, shared VM. Password hashing needed `DATABASE_UDF_USER_TIMEOUT_SECONDS=5` (the default is 1s) to stay reliable under load.

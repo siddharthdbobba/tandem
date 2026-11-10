@@ -230,6 +230,8 @@ async function runOne(run, job) {
       ? `[${run.author} interrupted your previous turn to steer you. Your last tool call may not have ` +
         `finished; check before assuming it ran. Adjust course using this message:]\n\n`
       : "") +
+    (job.instructions ? `[Workspace instructions from the group:]\n${job.instructions}\n\n` : "") +
+    (run.context ? `[${run.context}]\n\n` : "") +
     run.prompt;
   // Events are written in order: each waits for the previous one.
   let chain = Promise.resolve();

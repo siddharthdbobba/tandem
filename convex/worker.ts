@@ -60,6 +60,7 @@ export const claim = mutation({
       provider,
       model: model ?? null,
       effort: run.effort ?? null,
+      instructions: (await ctx.db.get(run.workspaceId))?.instructions ?? null,
       autoPoke: profile.autoPoke ?? false,
       sessionId: resume,
     };

@@ -11,6 +11,7 @@
 import type * as admin from "../admin.js";
 import type * as auth from "../auth.js";
 import type * as authInfo from "../authInfo.js";
+import type * as chat from "../chat.js";
 import type * as crons from "../crons.js";
 import type * as files from "../files.js";
 import type * as http from "../http.js";
@@ -18,6 +19,7 @@ import type * as lib from "../lib.js";
 import type * as maintenance from "../maintenance.js";
 import type * as presence from "../presence.js";
 import type * as profile from "../profile.js";
+import type * as templates from "../templates.js";
 import type * as worker from "../worker.js";
 import type * as workspaces from "../workspaces.js";
 
@@ -31,6 +33,7 @@ declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   auth: typeof auth;
   authInfo: typeof authInfo;
+  chat: typeof chat;
   crons: typeof crons;
   files: typeof files;
   http: typeof http;
@@ -38,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   maintenance: typeof maintenance;
   presence: typeof presence;
   profile: typeof profile;
+  templates: typeof templates;
   worker: typeof worker;
   workspaces: typeof workspaces;
 }>;

@@ -52,7 +52,18 @@ export default defineSchema({
     name: v.string(),
     ownerId: v.id("users"),
     inviteCode: v.string(),
+    template: v.optional(v.string()), // starter template id (trip, school, app, blank)
+    instructions: v.optional(v.string()), // how the agent should behave here, sent with every prompt
   }).index("by_invite", ["inviteCode"]),
+
+  // People-to-people chat beside the agent. "@ai ..." also sends it to the agent.
+  messages: defineTable({
+    workspaceId: v.id("workspaces"),
+    userId: v.id("users"),
+    author: v.string(),
+    color: v.string(),
+    text: v.string(),
+  }).index("by_workspace", ["workspaceId"]),
 
   members: defineTable({
     workspaceId: v.id("workspaces"),
@@ -94,6 +105,8 @@ export default defineSchema({
     wantModel: v.optional(v.string()),
     effort: v.optional(v.string()), // reasoning effort: low|medium|high|xhigh|max
     steer: v.optional(v.boolean()), // sent mid-run to redirect the agent
+    context: v.optional(v.string()), // extra context for the agent only (e.g. recent team chat)
+    fromChat: v.optional(v.boolean()), // asked from team chat with @ai
     steeredBy: v.optional(v.string()), // set on a run that was interrupted by a steer
     provider: v.optional(v.string()), // what it actually ran on
     model: v.optional(v.string()),

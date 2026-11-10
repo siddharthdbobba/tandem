@@ -1,7 +1,10 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { ensureProfile, getProfile, randomCode, requireMember, requireReader, requireUser } from "./lib";
+import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
+import { ensureProfile, getProfile, randomCode, requireMember, requireReader, requireUser, writeFile } from "./lib";
+import { TEMPLATES, templateById } from "./templates";
 
 // Workspaces I belong to.
 export const list = query({
@@ -16,7 +19,7 @@ export const list = query({
     const out = [];
     for (const m of ms) {
       const w = await ctx.db.get(m.workspaceId);
-      if (w) out.push({ _id: w._id, name: w.name, owner: (await getProfile(ctx, w.ownerId))?.name ?? "?" });
+      if (w) out.push({ _id: w._id, name: w.name, template: w.template, owner: (await getProfile(ctx, w.ownerId))?.name ?? "?" });
     }
     return out.reverse();
   },
@@ -34,7 +37,7 @@ export const get = query({
           .withIndex("by_workspace_user", (q) => q.eq("workspaceId", id).eq("userId", userId))
           .unique())
       : false;
-    return w && { _id: w._id, name: w.name, inviteCode: w.inviteCode, member };
+    return w && { _id: w._id, name: w.name, inviteCode: member ? w.inviteCode : undefined, member, owner: !!userId && w.ownerId === userId, instructions: w.instructions ?? "", template: w.template };
   },
 });
 
@@ -51,16 +54,123 @@ export const peek = query({
 });
 
 export const create = mutation({
-  args: { name: v.string() },
-  handler: async (ctx, { name }) => {
+  args: { name: v.string(), template: v.optional(v.string()) },
+  handler: async (ctx, { name, template }) => {
     const userId = await requireUser(ctx);
-    await ensureProfile(ctx, userId);
+    const profile = await ensureProfile(ctx, userId);
     name = name.trim();
     if (!name || name.length > 60) throw new Error("name must be 1 to 60 chars");
-    const id = await ctx.db.insert("workspaces", { name, ownerId: userId, inviteCode: randomCode(12) });
+    const t = templateById(template);
+    const id = await ctx.db.insert("workspaces", {
+      name, ownerId: userId, inviteCode: randomCode(12),
+      template: t?.id, instructions: t?.instructions || undefined,
+    });
     await ctx.db.insert("members", { workspaceId: id, userId });
     await ctx.db.insert("panes", { workspaceId: id, title: "Main" });
+    // Seed starter files; the worker writes them to disk like any browser edit.
+    for (const f of t?.files ?? []) await writeFile(ctx, id, f.path, f.content, profile.name, true);
     return id;
+  },
+});
+
+// Starter templates for the "new workspace" picker.
+export const templates = query({
+  args: {},
+  handler: async () => TEMPLATES.map(({ id, name, emoji, blurb }) => ({ id, name, emoji, blurb })),
+});
+
+// Suggested first prompts for a workspace (from its template).
+export const suggestions = query({
+  args: { workspaceId: v.id("workspaces"), code: v.optional(v.string()) },
+  handler: async (ctx, { workspaceId, code }) => {
+    await requireReader(ctx, workspaceId, code);
+    const w = await ctx.db.get(workspaceId);
+    return (templateById(w?.template) ?? templateById("blank"))!.prompts;
+  },
+});
+
+// ---------- workspace settings ----------
+
+async function requireOwner(ctx: MutationCtx, workspaceId: Id<"workspaces">) {
+  const userId = await requireMember(ctx, workspaceId);
+  const w = await ctx.db.get(workspaceId);
+  if (!w || w.ownerId !== userId) throw new Error("only the workspace owner can do that");
+  return { userId, w };
+}
+
+export const rename = mutation({
+  args: { workspaceId: v.id("workspaces"), name: v.string() },
+  handler: async (ctx, { workspaceId, name }) => {
+    await requireMember(ctx, workspaceId);
+    name = name.trim();
+    if (!name || name.length > 60) throw new Error("name must be 1 to 60 chars");
+    await ctx.db.patch(workspaceId, { name });
+  },
+});
+
+// "How the AI should behave here". Any member can edit; sent with every prompt.
+export const setInstructions = mutation({
+  args: { workspaceId: v.id("workspaces"), instructions: v.string() },
+  handler: async (ctx, { workspaceId, instructions }) => {
+    await requireMember(ctx, workspaceId);
+    if (instructions.length > 4000) throw new Error("instructions must be under 4000 characters");
+    await ctx.db.patch(workspaceId, { instructions: instructions.trim() || undefined });
+  },
+});
+
+// New share link; the old one stops working (for viewing and joining).
+export const resetLink = mutation({
+  args: { workspaceId: v.id("workspaces") },
+  handler: async (ctx, { workspaceId }) => {
+    await requireOwner(ctx, workspaceId);
+    const inviteCode = randomCode(12);
+    await ctx.db.patch(workspaceId, { inviteCode });
+    return inviteCode;
+  },
+});
+
+export const members = query({
+  args: { workspaceId: v.id("workspaces"), code: v.optional(v.string()) },
+  handler: async (ctx, { workspaceId, code }) => {
+    await requireReader(ctx, workspaceId, code);
+    const w = await ctx.db.get(workspaceId);
+    const ms = await ctx.db
+      .query("members")
+      .withIndex("by_workspace_user", (q) => q.eq("workspaceId", workspaceId))
+      .collect();
+    const out = [];
+    for (const m of ms) {
+      const p = await getProfile(ctx, m.userId);
+      out.push({ userId: m.userId, name: p?.name ?? "?", color: p?.color ?? "#888888", owner: w?.ownerId === m.userId });
+    }
+    return out;
+  },
+});
+
+export const leave = mutation({
+  args: { workspaceId: v.id("workspaces") },
+  handler: async (ctx, { workspaceId }) => {
+    const userId = await requireMember(ctx, workspaceId);
+    const w = await ctx.db.get(workspaceId);
+    if (w?.ownerId === userId) throw new Error("the owner can't leave; delete the workspace instead");
+    const m = await ctx.db
+      .query("members")
+      .withIndex("by_workspace_user", (q) => q.eq("workspaceId", workspaceId).eq("userId", userId))
+      .unique();
+    if (m) await ctx.db.delete(m._id);
+  },
+});
+
+// Owner deletes a workspace. Rows are removed in batches by a scheduled job.
+export const remove = mutation({
+  args: { workspaceId: v.id("workspaces") },
+  handler: async (ctx, { workspaceId }) => {
+    await requireOwner(ctx, workspaceId);
+    // Revoke access immediately, then clean up.
+    for (const m of await ctx.db.query("members").withIndex("by_workspace_user", (q) => q.eq("workspaceId", workspaceId)).collect())
+      await ctx.db.delete(m._id);
+    await ctx.db.patch(workspaceId, { inviteCode: randomCode(24) });
+    await ctx.scheduler.runAfter(0, internal.maintenance.purgeWorkspace, { workspaceId });
   },
 });
 
@@ -179,6 +289,7 @@ export const paneFeed = query({
       model: r.model,
       effort: r.effort,
       steer: r.steer,
+      fromChat: r.fromChat,
       steeredBy: r.steeredBy,
       events: events.filter((e) => e.runId === r._id),
     }));

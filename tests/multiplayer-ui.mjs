@@ -103,6 +103,7 @@ try {
     await until(async () => (await B.js("!!document.querySelector('.file')")), 10000, "tree");
     await open(A); await open(B);
     await until(async () => (await B.js(cmText)) === "v1", 10000, "bob sees v1");
+    await until(async () => (await A.js(cmText)) === "v1", 10000, "alice sees v1");
     await A.js(cmType("v2 from alice"));
     await A.js("[...document.querySelectorAll('.editor button')].find(b=>b.textContent==='Save').click(), true");
     await until(async () => (await B.js(cmText)) === "v2 from alice", 10000, "bob sees v2");

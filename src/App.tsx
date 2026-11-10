@@ -751,12 +751,12 @@ function Pane({
           ))}
         </span>
         {canClose && (
-          <button className="ghost x" onClick={() => remove({ paneId: pane._id })} title="Close pane">
+          <button className="ghost x" onClick={() => remove({ paneId: pane._id })} title="Close pane" aria-label="Close pane">
             ×
           </button>
         )}
       </div>
-      <div className="feed">
+      <div className="feed" aria-live="polite" aria-relevant="additions">
         {feed?.length === 0 && (
           <div className="pane-empty">
             <p className="pane-empty__title">Ask the AI to get started</p>
@@ -1063,7 +1063,8 @@ function FileTree({
         const name = f.path.split("/").pop()!;
         return (
           <div key={f._id} className={`file ${open === f.path ? "active" : ""}`} style={{ paddingLeft: 8 + depth * 12 }}
-            onClick={() => onOpen(f.path)} title={`last change: ${f.updatedBy}`}>
+            role="button" tabIndex={0} onClick={() => onOpen(f.path)} title={`last change: ${f.updatedBy}`}
+            onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); e.currentTarget.click(); } }}>
             <span className="file__icon" aria-hidden="true">{fileIcon(name)}</span>
             <span className="file__name">{name}{depth > 0 && <span className="dim"> {f.path.split("/").slice(0, -1).join("/")}/</span>}</span>
             {!readOnly && (
@@ -1086,4 +1087,3 @@ function FileTree({
     </div>
   );
 }
-

@@ -44,7 +44,7 @@ function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [msgs?.length]);
   return (
     <div className="chat">
-      <div className="chat__log">
+      <div className="chat__log" aria-live="polite">
         {msgs?.length === 0 && (
           <div className="chat__empty">
             <p><b>Talk it through here.</b></p>
@@ -99,7 +99,7 @@ function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
           setErr("");
           try { await send({ workspaceId, text: t }); } catch (x) { setText(t); setErr(String((x as Error).message).split("\n")[0].replace(/^.*Error: /, "")); }
         }}>
-          <textarea rows={1} value={text} placeholder="Message the group… (@ai to ask the AI)"
+          <textarea rows={1} value={text} placeholder="Message the group… (@ai to ask the AI)" aria-label="Message the group"
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
           <button disabled={!text.trim()} aria-label="Send message">↑</button>

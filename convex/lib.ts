@@ -92,6 +92,7 @@ export async function writeFile(
   updatedBy: string,
   pendingWrite: boolean,
 ) {
+  const updatedAt = Date.now();
   const existing = await findFile(ctx, workspaceId, path);
   if (!existing) {
     const fileId = await ctx.db.insert("files", {
@@ -99,12 +100,13 @@ export async function writeFile(
       path,
       size: content.length,
       updatedBy,
+      updatedAt,
       pendingWrite,
     });
     await ctx.db.insert("contents", { fileId, content });
     return fileId;
   }
-  await ctx.db.patch(existing._id, { size: content.length, updatedBy, pendingWrite });
+  await ctx.db.patch(existing._id, { size: content.length, updatedBy, updatedAt, pendingWrite });
   // A file that was binary and is now text: drop the old blob.
   if (existing.blob) {
     await ctx.storage.delete(existing.blob);

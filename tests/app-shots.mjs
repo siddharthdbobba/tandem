@@ -54,6 +54,15 @@ await send("Page.navigate", { url: `${UI}/#/w/${ws}` }); await sleep(3000);
 await js("localStorage.setItem('tandem-tour-done','1'); [...document.querySelectorAll('.panel-toggle')].find(b=>b.textContent.includes('Chat'))?.click()"); await sleep(1500);
 await shoot("chat.png");
 await js("document.querySelector('.side__close')?.click()");
+// "While you were away": a friend edits and chats after our last visit.
+const maya = await account(`shots-maya-${id}@test.dev`, pw, "Maya");
+await maya.mutation(api.workspaces.join, { inviteCode: (await u.query(api.workspaces.get, { id: ws })).inviteCode });
+await send("Page.navigate", { url: `${UI}/#/` }); await sleep(2000);
+await js(`localStorage.setItem('tandem-seen-${ws}', String(Date.now() - 3600000)); true`);
+await maya.mutation(api.files.save, { workspaceId: ws, path: "itinerary.md", content: "# Yosemite\n\nSat: Tuolumne Meadows, Upper Pines site 42\n" });
+await maya.mutation(api.chat.send, { workspaceId: ws, text: "Booked the site! 🏕️" });
+await send("Page.navigate", { url: `${UI}/#/w/${ws}` }); await sleep(3500);
+await shoot("away.png");
 await send("Page.navigate", { url: `${UI}/#/w/${ws}` }); await sleep(3500);
 await shoot("workspace-m.png", 390, 844);
 clearTimeout(kill); sock.close(); proc.kill("SIGKILL");

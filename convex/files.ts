@@ -100,6 +100,7 @@ export const saveBinary = mutation({
     if (existing) await deleteFile(ctx, existing._id);
     await ctx.db.insert("files", {
       workspaceId, path, size: meta.size, updatedBy: profile.name, pendingWrite: true,
+      updatedAt: Date.now(),
       blob, hash, mime: meta.contentType ?? "application/octet-stream",
     });
   },
@@ -144,7 +145,7 @@ export const move = mutation({
     if (!f) throw new Error("file not found");
     if (await findFile(ctx, workspaceId, to)) throw new Error("a file with that name already exists");
     if (f.blob) {
-      await ctx.db.patch(f._id, { path: to, pendingWrite: true, updatedBy: p.name });
+      await ctx.db.patch(f._id, { path: to, pendingWrite: true, updatedBy: p.name, updatedAt: Date.now() });
     } else {
       await writeFile(ctx, workspaceId, to, await readContent(ctx, f._id), p.name, true);
       await deleteFile(ctx, f._id);

@@ -334,9 +334,9 @@ export const putBinary = mutation({
       if (existing.blob) await ctx.storage.delete(existing.blob);
       const row = await ctx.db.query("contents").withIndex("by_file", (q) => q.eq("fileId", existing._id)).unique();
       if (row) await ctx.db.delete(row._id);
-      await ctx.db.patch(existing._id, { blob, hash, size, mime, updatedBy: "agent" });
+      await ctx.db.patch(existing._id, { blob, hash, size, mime, updatedBy: "agent", updatedAt: Date.now() });
     } else {
-      await ctx.db.insert("files", { workspaceId, path, size, updatedBy: "agent", pendingWrite: false, blob, hash, mime });
+      await ctx.db.insert("files", { workspaceId, path, size, updatedBy: "agent", updatedAt: Date.now(), pendingWrite: false, blob, hash, mime });
     }
   },
 });

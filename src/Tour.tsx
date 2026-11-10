@@ -7,10 +7,10 @@ const steps = [
   { title: "Bring your people", body: "Copy the share link at the top to invite friends. Use Chat to talk, or type @ai there to hand the AI a task." },
 ];
 
-export function Tour() {
+export function Tour({ onDone }: { onDone?: () => void }) {
   const [step, setStep] = useState(() => (localStorage.getItem("tandem-tour-done") ? -1 : 0));
   if (step < 0) return null;
-  const done = () => { localStorage.setItem("tandem-tour-done", "1"); setStep(-1); };
+  const done = () => { localStorage.setItem("tandem-tour-done", "1"); setStep(-1); onDone?.(); };
   const s = steps[step];
   return (
     <div className="tour" role="status" aria-label="Welcome tour">

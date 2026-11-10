@@ -6,6 +6,7 @@ const Editor = lazy(() => import("./Editor").then((m) => ({ default: m.Editor })
 import { ViewCtx, goJoin, useView } from "./view";
 import { SidePanel } from "./SidePanel";
 import { Tour } from "./Tour";
+import { Away } from "./Away";
 import { Shortcuts } from "./Shortcuts";
 import { PublicPage } from "./Publish";
 import Privacy from "./Privacy";
@@ -509,6 +510,7 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
   const people = useQuery(api.presence.list, { workspaceId: id, now: Math.floor(now / 10000) * 10000, code });
   const [focusPane, setFocusPane] = useState<Id<"panes"> | undefined>();
   const [openFile, setOpenFile] = useState<string | null>(null);
+  const [tourShowing, setTourShowing] = useState(() => !localStorage.getItem("tandem-tour-done"));
   const [copied, setCopied] = useState(false);
   // Right panel: team chat or workspace settings. Remembered per device.
   const [panel, setPanel] = useState<"chat" | "settings" | null>(() => (localStorage.getItem("tandem-panel") as "chat" | "settings" | null) ?? null);
@@ -657,7 +659,9 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
           </Suspense>
         ) : (
           <>
-            {!readOnly && <Tour />}
+            {!readOnly && <Tour onDone={() => setTourShowing(false)} />}
+            <Away key={id} workspaceId={id} readOnly={readOnly} tourShowing={tourShowing}
+              onOpenFile={setOpenFile} onOpenChat={() => setPanel("chat")} />
             <BrowserView workspaceId={id} live={!!busy} />
             <div className="panes">
               {panes?.map((p) => (

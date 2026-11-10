@@ -323,6 +323,20 @@ try {
     assert.equal(await A.js("!!document.querySelector('.shortcuts')"), false);
   });
 
+  await test("while away banner shows other members' file and chat activity", async () => {
+    await A.js(`localStorage.setItem('tandem-seen-${wsId}', String(Date.now() - 60000)), true`);
+    const path = `away-${id}.md`;
+    await carol.mutation(api.files.save, { workspaceId: wsId, path, content: "from carol" });
+    await carol.mutation(api.chat.send, { workspaceId: wsId, text: "while you were away" });
+    await A.js("location.reload(), true");
+    await until(async () => await A.js("!!document.querySelector('.away')"), 15000, "away banner");
+    const text = await A.js("document.querySelector('.away').textContent");
+    assert.ok(text.includes(path), text);
+    assert.ok(/\d+ chat messages?/.test(text), text);
+    await A.js("document.querySelector('.away__dismiss').click(), true");
+    await until(async () => !(await A.js("!!document.querySelector('.away')")), 3000, "away banner dismissed");
+  });
+
   await test("no page errors in either browser", async () => {
     assert.deepEqual(await A.js("window.__errs"), []);
     assert.deepEqual(await B.js("window.__errs"), []);

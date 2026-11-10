@@ -120,6 +120,7 @@ export default defineSchema({
     finishedAt: v.optional(v.number()),
   })
     .index("by_pane", ["paneId"])
+    .index("by_workspace", ["workspaceId"])
     .index("by_status", ["status"]),
 
   // Streamed output lines for a run.
@@ -144,6 +145,7 @@ export default defineSchema({
     path: v.string(),
     size: v.number(),
     updatedBy: v.string(),
+    updatedAt: v.optional(v.number()),
     pendingWrite: v.boolean(), // edited in browser, worker must write to disk
     // Binary files (images, PDFs...) live in Convex file storage instead of `contents`.
     blob: v.optional(v.id("_storage")),

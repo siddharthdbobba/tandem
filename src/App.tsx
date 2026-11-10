@@ -271,6 +271,22 @@ function stepSummary(steps: Ev[]) {
   return parts.join(", ").replace(/^./, (c) => c.toUpperCase());
 }
 
+// Saves an AI reply as a shared markdown file, named from the prompt.
+function SaveReplyButton({ workspaceId, prompt, text }: { workspaceId: Id<"workspaces">; prompt: string; text: string }) {
+  const save = useMutation(api.files.save);
+  const [saved, setSaved] = useState("");
+  return (
+    <button className="ghost copy-btn" aria-label="Save reply as a file" onClick={async () => {
+      const slug = prompt.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").split("-").slice(0, 5).join("-") || "ai-reply";
+      const name = window.prompt("Save this reply as", `notes/${slug}.md`)?.trim();
+      if (!name) return;
+      await save({ workspaceId, path: name.endsWith(".md") ? name : `${name}.md`, content: text.endsWith("\n") ? text : `${text}\n` });
+      setSaved("Saved");
+      setTimeout(() => setSaved(""), 1500);
+    }}>{saved || "Save as file"}</button>
+  );
+}
+
 // Copies an AI reply as markdown, so it pastes cleanly into a text, doc or email.
 function CopyButton({ text }: { text: string }) {
   const [done, setDone] = useState(false);
@@ -964,7 +980,12 @@ function Pane({
               ) : e.kind === "message" ? (
                 <div key={e._id} className="ev-msg">
                   <div className="ev message md" dangerouslySetInnerHTML={{ __html: renderMarkdown(e.text) }} />
-                  <CopyButton text={e.text} />
+                  {readOnly ? <CopyButton text={e.text} /> : (
+                    <span className="msg-actions">
+                      <SaveReplyButton workspaceId={pane.workspaceId} prompt={r.prompt} text={e.text} />
+                      <CopyButton text={e.text} />
+                    </span>
+                  )}
                 </div>
               ) : e.kind === "error" && /subscription isn't connected/.test(e.text) ? (
                 <div key={e._id} className="ev error ev-connect">

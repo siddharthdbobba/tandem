@@ -308,3 +308,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="tab"]:focus-v
 .copy-btn { position: absolute; top: 0; right: 0; height: 24px; padding: 0 8px; font-size: var(--text-xs); color: var(--color-muted); border: 1px solid var(--color-rule); border-radius: 6px; background: var(--color-paper); opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
 .ev-msg:hover .copy-btn, .copy-btn:focus-visible { opacity: 1; }
 @media (hover: none) { .copy-btn { position: static; opacity: 1; margin-top: 2px; } }
+.msg-actions { position: absolute; top: 0; right: 0; display: inline-flex; gap: 4px; opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
+.msg-actions .copy-btn { position: static; opacity: 1; }
+.ev-msg:hover .msg-actions, .msg-actions:focus-within { opacity: 1; }
+@media (hover: none) { .msg-actions { position: static; opacity: 1; margin-top: 2px; } }

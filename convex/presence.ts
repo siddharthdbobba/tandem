@@ -1,6 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { getProfile, requireMember } from "./lib";
+import { getProfile, requireMember, requireReader } from "./lib";
 
 const STALE_MS = 30_000;
 
@@ -18,9 +18,9 @@ export const heartbeat = mutation({
 });
 
 export const list = query({
-  args: { workspaceId: v.id("workspaces"), now: v.number() },
-  handler: async (ctx, { workspaceId, now }) => {
-    await requireMember(ctx, workspaceId);
+  args: { workspaceId: v.id("workspaces"), now: v.number(), code: v.optional(v.string()) },
+  handler: async (ctx, { workspaceId, now, code }) => {
+    await requireReader(ctx, workspaceId, code);
     const rows = await ctx.db
       .query("presence")
       .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))

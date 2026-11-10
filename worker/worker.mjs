@@ -127,8 +127,9 @@ client.onUpdate(api.worker.pendingWrites, s, async (files) => {
 // Linux user, with HOME/JCODE_HOME in that user's private directory. That is
 // what keeps one person's subscription tokens away from everyone else.
 const SANDBOX = process.env.TANDEM_AS ?? "/usr/local/sbin/tandem-as";
-function jcodeAs(sandboxKey, cwd, args) {
-  return spawn("sudo", ["-n", SANDBOX, sandboxKey, cwd, "--", "jcode", ...args], {
+function jcodeAs(sandboxKey, cwd, args, effort) {
+  const pre = effort ? ["--effort", effort] : [];
+  return spawn("sudo", ["-n", SANDBOX, sandboxKey, cwd, "--", "jcode", ...pre, ...args], {
     stdio: ["ignore", "pipe", "pipe"],
   });
 }
@@ -151,13 +152,13 @@ async function runOne(run, job) {
   if (job.sessionId) args.push("--resume", job.sessionId);
   args.push(prompt);
 
-  log("run", run._id, "as", job.sandboxKey, job.provider, job.sessionId ? "(resume)" : "(new)");
+  log("run", run._id, "as", job.sandboxKey, job.provider, job.model ?? "", job.effort ?? "", job.sessionId ? "(resume)" : "(new)");
   // Give this member's sandbox user access to this one workspace (idempotent).
   await new Promise((res) => {
     const g = spawn("sudo", ["-n", SANDBOX, job.sandboxKey, dir, "--grant"], { stdio: "ignore" });
     g.on("close", res);
   });
-  const child = jcodeAs(job.sandboxKey, dir, args);
+  const child = jcodeAs(job.sandboxKey, dir, args, job.effort);
   active.set(run._id, child);
 
   // Stop the agent if anyone hits cancel.

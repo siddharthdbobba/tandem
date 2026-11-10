@@ -20,6 +20,16 @@ export async function requireMember(ctx: QueryCtx, workspaceId: Id<"workspaces">
   return userId;
 }
 
+// Read access: a member, or anyone holding the workspace's invite link.
+// Writes always go through requireMember.
+export async function requireReader(ctx: QueryCtx, workspaceId: Id<"workspaces">, inviteCode?: string) {
+  if (inviteCode) {
+    const w = await ctx.db.get(workspaceId);
+    if (w && w.inviteCode === inviteCode) return;
+  }
+  await requireMember(ctx, workspaceId);
+}
+
 export async function getProfile(ctx: QueryCtx, userId: Id<"users">) {
   return ctx.db
     .query("profiles")

@@ -91,6 +91,7 @@ export default defineSchema({
     ),
     wantProvider: v.optional(provider), // picked in the pane for this prompt
     wantModel: v.optional(v.string()),
+    effort: v.optional(v.string()), // reasoning effort: low|medium|high|xhigh|max
     provider: v.optional(v.string()), // what it actually ran on
     model: v.optional(v.string()),
     finishedAt: v.optional(v.number()),

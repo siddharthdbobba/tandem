@@ -135,16 +135,28 @@ try {
     await until(async () => (await A.js("document.querySelectorAll('.pane').length")) === before + 1, 10000, "alice sees pane");
   });
 
-  await test("landing page leads to open sign-up; a join link signs up and lands in the workspace", async () => {
+  await test("share link: signed-out viewer sees live, read-only; sign-up makes them a member", async () => {
     const C = await browser("carl", 9343);
     try {
       await C.send("Page.navigate", { url: `${UI}/` });
       await until(async () => /Code with agents, together/.test(await C.js("document.body.innerText")), 15000, "landing");
       assert.ok(await C.js("!!document.querySelector('a[href=\"#/signup\"]')"), "landing has a sign-up CTA");
-      // Invite link -> sign-up form (no invite code field), then straight into the workspace.
+      // Share link, signed out: the workspace is visible live but read-only.
       await C.send("Page.navigate", { url: `${UI}/#/join/${inviteCode}` });
+      await until(async () => (await C.js("document.querySelector('.ws-name')?.textContent")) === "multiplayer-ui", 15000, "viewer sees workspace");
+      await until(async () => /hello-from-ui/.test(await C.js("document.querySelector('.feed')?.innerText ?? ''")), 10000, "viewer sees others' prompts");
+      await until(async () => /shared\.md/.test(await C.js("document.querySelector('.tree').innerText")), 10000, "viewer sees files");
+      assert.equal(await C.js("!!document.querySelector('.prompt-box textarea')"), false, "no prompt box");
+      assert.equal(await C.js("!!document.querySelector('.add-pane')"), false, "no add pane");
+      assert.equal(await C.js("!!document.querySelector('.upload-btn')"), false, "no upload");
+      assert.equal(await C.js("document.querySelector('.viewing-pill')?.textContent"), "View only");
+      // Opening a file is read-only too.
+      await C.js("[...document.querySelectorAll('.file')].find(f=>f.textContent.startsWith('shared.md')).click(), true");
+      await until(async () => await C.js("document.querySelector('textarea.code')?.readOnly === true"), 10000, "read-only editor");
+      await C.js("[...document.querySelectorAll('.editor button')].find(b=>b.textContent.includes('panes')).click(), true");
+      // Sign up from the viewer, then land in the workspace as a member.
+      await C.js("[...document.querySelectorAll('button')].find(b=>b.textContent==='Sign up to join').click(), true");
       await until(async () => await C.js("!!document.querySelector('input[name=name]')"), 15000, "sign-up form");
-      assert.equal(await C.js("!!document.querySelector('input[name=invite]')"), false);
       assert.match(await C.js("document.body.innerText"), /invited to a workspace/);
       await C.js(`(() => {
         const set = (sel, v) => { const el = document.querySelector(sel); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); };
@@ -152,6 +164,7 @@ try {
         document.querySelector('form.stack').requestSubmit(); return true; })()`);
       await until(async () => (await C.js("location.hash")) === `#/w/${wsId}`, 20000, "lands in workspace");
       await until(async () => (await C.js("document.querySelector('.ws-name')?.textContent")) === "multiplayer-ui", 10000, "workspace name");
+      await until(async () => await C.js("!!document.querySelector('.prompt-box textarea')"), 10000, "member can prompt");
     } finally {
       C.ws.close(); C.proc.kill("SIGTERM");
     }
@@ -171,11 +184,16 @@ try {
     assert.equal(await bob.query(api.files.get, { workspaceId: wsId, path: "pic.png" }), null);
   });
 
-  await test("pane model picker lists models; unconnected providers are disabled", async () => {
-    const opts = await A.js("[...document.querySelectorAll('.prompt-actions select option')].map(o => o.value + (o.disabled ? '!' : ''))");
-    assert.ok(opts.includes(""), "has 'my default'");
-    assert.ok(opts.includes("claude|claude-sonnet-5-5!"), "claude model listed, disabled when not connected");
-    assert.ok(opts.some((o) => o.startsWith("openai|gpt-")), "openai models listed");
+  await test("pane model picker: friendly names, unconnected disabled, effort selectable", async () => {
+    await A.js("document.querySelector('.picker__chip').click(), true");
+    await until(async () => await A.js("!!document.querySelector('.picker__menu')"), 5000, "menu opens");
+    const items = await A.js("[...document.querySelectorAll('.picker__item[data-model]')].map(b => b.dataset.model + '=' + b.textContent + (b.disabled ? '!' : ''))");
+    assert.ok(items.includes("claude|claude-sonnet-5-5=Sonnet 5.5!"), items.join(","));
+    assert.ok(items.includes("openai|gpt-6.1-sol=GPT-6.1 Sol!"), items.join(","));
+    await A.js("[...document.querySelectorAll('.picker__effort-row button')].find(b => b.textContent === 'high').click(), true");
+    await until(async () => (await A.js("document.querySelector('.picker__chip').textContent")).includes("high"), 3000, "chip shows effort");
+    await A.js("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })), true");
+    await until(async () => !(await A.js("!!document.querySelector('.picker__menu')")), 3000, "menu closes");
   });
 
   await test("no page errors in either browser", async () => {

@@ -1,7 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { ensureProfile, getProfile, randomCode, requireMember, requireUser } from "./lib";
+import { ensureProfile, getProfile, randomCode, requireMember, requireReader, requireUser } from "./lib";
 
 // Workspaces I belong to.
 export const list = query({
@@ -23,11 +23,30 @@ export const list = query({
 });
 
 export const get = query({
-  args: { id: v.id("workspaces") },
-  handler: async (ctx, { id }) => {
-    await requireMember(ctx, id);
+  args: { id: v.id("workspaces"), code: v.optional(v.string()) },
+  handler: async (ctx, { id, code }) => {
+    await requireReader(ctx, id, code);
     const w = await ctx.db.get(id);
-    return w && { _id: w._id, name: w.name, inviteCode: w.inviteCode };
+    const userId = await getAuthUserId(ctx);
+    const member = userId
+      ? !!(await ctx.db
+          .query("members")
+          .withIndex("by_workspace_user", (q) => q.eq("workspaceId", id).eq("userId", userId))
+          .unique())
+      : false;
+    return w && { _id: w._id, name: w.name, inviteCode: w.inviteCode, member };
+  },
+});
+
+// Resolve a share link to its workspace, for read-only viewing. No sign-in needed.
+export const peek = query({
+  args: { code: v.string() },
+  handler: async (ctx, { code }) => {
+    const w = await ctx.db
+      .query("workspaces")
+      .withIndex("by_invite", (q) => q.eq("inviteCode", code.trim()))
+      .unique();
+    return w && { _id: w._id, name: w.name };
   },
 });
 
@@ -66,9 +85,9 @@ export const join = mutation({
 });
 
 export const listPanes = query({
-  args: { workspaceId: v.id("workspaces") },
-  handler: async (ctx, { workspaceId }) => {
-    await requireMember(ctx, workspaceId);
+  args: { workspaceId: v.id("workspaces"), code: v.optional(v.string()) },
+  handler: async (ctx, { workspaceId, code }) => {
+    await requireReader(ctx, workspaceId, code);
     return ctx.db
       .query("panes")
       .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
@@ -117,11 +136,11 @@ export const removePane = mutation({
 // Everything a pane needs to render: its latest runs and their output, live.
 // Bounded so long-lived panes stay within Convex read limits.
 export const paneFeed = query({
-  args: { paneId: v.id("panes") },
-  handler: async (ctx, { paneId }) => {
+  args: { paneId: v.id("panes"), code: v.optional(v.string()) },
+  handler: async (ctx, { paneId, code }) => {
     const pane = await ctx.db.get(paneId);
     if (!pane) return [];
-    await requireMember(ctx, pane.workspaceId);
+    await requireReader(ctx, pane.workspaceId, code);
     const runs = (
       await ctx.db
         .query("runs")
@@ -144,6 +163,7 @@ export const paneFeed = query({
       status: r.status,
       provider: r.provider,
       model: r.model,
+      effort: r.effort,
       events: events.filter((e) => e.runId === r._id),
     }));
   },
@@ -155,8 +175,9 @@ export const submitPrompt = mutation({
     prompt: v.string(),
     provider: v.optional(v.union(v.literal("claude"), v.literal("openai"))),
     model: v.optional(v.string()),
+    effort: v.optional(v.union(v.literal("low"), v.literal("medium"), v.literal("high"), v.literal("xhigh"), v.literal("max"))),
   },
-  handler: async (ctx, { paneId, prompt, provider, model }) => {
+  handler: async (ctx, { paneId, prompt, provider, model, effort }) => {
     if (model && !/^[A-Za-z0-9._:\-/\[\]]{1,80}$/.test(model)) throw new Error("bad model name");
     const pane = await ctx.db.get(paneId);
     if (!pane) throw new Error("pane not found");
@@ -173,6 +194,7 @@ export const submitPrompt = mutation({
       status: "queued",
       wantProvider: provider,
       wantModel: model || undefined,
+      effort,
     });
   },
 });

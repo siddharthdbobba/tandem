@@ -1,12 +1,12 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { ensureProfile, findFile, readContent, requireMember, writeFile } from "./lib";
+import { ensureProfile, findFile, readContent, requireMember, requireReader, writeFile } from "./lib";
 
 // File tree. Reads metadata only, so it stays cheap however big files get.
 export const tree = query({
-  args: { workspaceId: v.id("workspaces") },
-  handler: async (ctx, { workspaceId }) => {
-    await requireMember(ctx, workspaceId);
+  args: { workspaceId: v.id("workspaces"), code: v.optional(v.string()) },
+  handler: async (ctx, { workspaceId, code }) => {
+    await requireReader(ctx, workspaceId, code);
     const files = await ctx.db
       .query("files")
       .withIndex("by_workspace_path", (q) => q.eq("workspaceId", workspaceId))
@@ -21,9 +21,9 @@ export const tree = query({
 });
 
 export const get = query({
-  args: { workspaceId: v.id("workspaces"), path: v.string() },
-  handler: async (ctx, { workspaceId, path }) => {
-    await requireMember(ctx, workspaceId);
+  args: { workspaceId: v.id("workspaces"), path: v.string(), code: v.optional(v.string()) },
+  handler: async (ctx, { workspaceId, path, code }) => {
+    await requireReader(ctx, workspaceId, code);
     const file = await findFile(ctx, workspaceId, path);
     if (!file) return null;
     return { ...file, content: await readContent(ctx, file._id) };

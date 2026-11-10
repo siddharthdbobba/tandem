@@ -58,6 +58,7 @@ export const claim = mutation({
       sandboxKey: profile.sandboxKey,
       provider,
       model: model ?? null,
+      effort: run.effort ?? null,
       sessionId: resume,
     };
   },

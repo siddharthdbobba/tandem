@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "../convex/_generated/api";
@@ -13,9 +13,17 @@ const PROVIDERS = [
 type ProviderId = (typeof PROVIDERS)[number]["id"];
 // From `jcode model list -p <provider>` on the server.
 const MODELS: Record<ProviderId, string[]> = {
-  claude: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5", "claude-sonnet-5", "claude-fable-5-2", "claude-opus-4-8", "claude-sonnet-4-6"],
-  openai: ["gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna", "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
+  claude: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-2", "claude-opus-5", "claude-sonnet-5"],
+  openai: ["gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna", "gpt-6-astra", "gpt-5.6-sol"],
 };
+const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+type Effort = (typeof EFFORTS)[number];
+// "claude-sonnet-5-5" -> "Sonnet 5.5", "gpt-6.1-sol" -> "GPT-6.1 Sol"
+const modelLabel = (m: string) =>
+  m.startsWith("claude-")
+    ? m.slice(7).replace(/^(\w)(\w*)-(\d+)(?:-(\d+))?$/, (_, a, b, x, y) => `${a.toUpperCase()}${b} ${x}${y ? "." + y : ""}`)
+    : m.replace(/^gpt-([\d.]+)-(\w)(\w*)$/, (_, v, a, b) => `GPT-${v} ${a.toUpperCase()}${b}`);
+const providerName = (p: string) => (p === "claude" ? "Claude" : "ChatGPT");
 
 // Routes: #/            home
 //         #/settings    my config
@@ -31,6 +39,16 @@ function useRoute() {
   const [, kind, arg] = hash.split("/");
   return { kind: kind ?? "", arg: arg ?? "" };
 }
+
+// Viewing through a share link: queries carry the code; writes are swapped for a sign-in prompt.
+type View = { code?: string; readOnly: boolean };
+const ViewCtx = createContext<View>({ readOnly: false });
+const useView = () => useContext(ViewCtx);
+// Sends a viewer to sign up, then back into this workspace as a member.
+const goJoin = (code?: string) => {
+  if (code) sessionStorage.setItem("tandem-join", code);
+  location.hash = "/signup";
+};
 
 export default function App() {
   return (
@@ -52,9 +70,9 @@ export default function App() {
 // sign-up and remembers the invite; everything else is the landing page.
 function SignedOut() {
   const route = useRoute();
-  if (route.kind === "join" && route.arg) sessionStorage.setItem("tandem-join", route.arg);
+  if (route.kind === "join" && route.arg) return <Viewer code={route.arg} />;
   if (route.kind === "signin") return <SignIn initial="signIn" />;
-  if (route.kind === "signup" || route.kind === "join") return <SignIn initial="signUp" />;
+  if (route.kind === "signup") return <SignIn initial="signUp" />;
   return <Landing />;
 }
 
@@ -179,6 +197,15 @@ function TopRight() {
   const me = useQuery(api.profile.me);
   const { signOut } = useAuthActions();
   const connected = me?.connections.some((c) => c.provider === me.profile?.provider && c.status === "connected");
+  const { code, readOnly } = useView();
+  if (readOnly) {
+    return (
+      <div className="topright">
+        <a href="#/signin" className="textlink" onClick={() => code && sessionStorage.setItem("tandem-join", code)}>Sign in</a>
+        <button className="btn btn--primary btn--sm" onClick={() => goJoin(code)}>Sign up to join</button>
+      </div>
+    );
+  }
   return (
     <div className="topright">
       {me && !connected && (
@@ -389,27 +416,40 @@ function Settings() {
   );
 }
 
+// Signed out with a share link: look it up, then show the workspace read-only.
+function Viewer({ code }: { code: string }) {
+  const ws = useQuery(api.workspaces.peek, { code });
+  if (ws === undefined) return <div className="loading"><span className="spin" aria-hidden="true" /> Loading…</div>;
+  if (ws === null) return <div className="loading">This link is invalid. <a href="#/" className="textlink">Go home</a></div>;
+  return (
+    <ViewCtx.Provider value={{ code, readOnly: true }}>
+      <Workspace id={ws._id} />
+    </ViewCtx.Provider>
+  );
+}
+
 function Workspace({ id }: { id: Id<"workspaces"> }) {
+  const { code, readOnly } = useView();
   const me = useQuery(api.profile.me);
-  const ws = useQuery(api.workspaces.get, { id });
-  const panes = useQuery(api.workspaces.listPanes, { workspaceId: id });
+  const ws = useQuery(api.workspaces.get, { id, code });
+  const panes = useQuery(api.workspaces.listPanes, { workspaceId: id, code });
   const addPane = useMutation(api.workspaces.addPane);
   const heartbeat = useMutation(api.presence.heartbeat);
   const [now, setNow] = useState(Date.now());
-  const people = useQuery(api.presence.list, { workspaceId: id, now: Math.floor(now / 10000) * 10000 });
+  const people = useQuery(api.presence.list, { workspaceId: id, now: Math.floor(now / 10000) * 10000, code });
   const [focusPane, setFocusPane] = useState<Id<"panes"> | undefined>();
   const [openFile, setOpenFile] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const beat = () => {
-      heartbeat({ workspaceId: id, paneId: focusPane }).catch(() => {});
+      if (!readOnly) heartbeat({ workspaceId: id, paneId: focusPane }).catch(() => {});
       setNow(Date.now());
     };
     beat();
     const t = setInterval(beat, 10000);
     return () => clearInterval(t);
-  }, [id, focusPane, heartbeat]);
+  }, [id, focusPane, heartbeat, readOnly]);
 
   if (ws === null) return <div className="loading">Workspace not found. <a href="#/" className="textlink">Back to your workspaces</a></div>;
   const myId = me?.userId;
@@ -419,13 +459,17 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
       <AppBar>
         <span className="crumb" aria-hidden="true">/</span>
         <span className="ws-name">{ws?.name}</span>
-        <button className="btn btn--ghost btn--sm" onClick={() => {
-          navigator.clipboard.writeText(`${location.origin}${location.pathname}#/join/${ws?.inviteCode}`);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        }}>
-          {copied ? "Link copied" : "Copy invite link"}
-        </button>
+        {readOnly ? (
+          <span className="viewing-pill">View only</span>
+        ) : (
+          <button className="btn btn--ghost btn--sm" onClick={() => {
+            navigator.clipboard.writeText(`${location.origin}${location.pathname}#/join/${ws?.inviteCode}`);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}>
+            {copied ? "Link copied" : "Copy share link"}
+          </button>
+        )}
         <div className="people" aria-label="People here now">
           {people?.map((p) => (
             <span key={p._id} className="avatar avatar--sm" style={{ background: p.color }} title={p.name}>
@@ -450,16 +494,18 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
                   myId={myId}
                   viewers={people?.filter((x) => x.paneId === p._id && x.userId !== myId) ?? []}
                   onFocus={() => setFocusPane(p._id)}
-                  canClose={(panes?.length ?? 0) > 1}
+                  canClose={!readOnly && (panes?.length ?? 0) > 1}
                 />
               ))}
             </div>
-            <button
-              className="add-pane"
-              onClick={() => addPane({ workspaceId: id, title: `Agent ${(panes?.length ?? 0) + 1}` })}
-            >
-              + New prompt pane
-            </button>
+            {!readOnly && (
+              <button
+                className="add-pane"
+                onClick={() => addPane({ workspaceId: id, title: `Agent ${(panes?.length ?? 0) + 1}` })}
+              >
+                + New prompt pane
+              </button>
+            )}
           </>
         )}
       </main>
@@ -482,16 +528,18 @@ function Pane({
   onFocus: () => void;
   canClose: boolean;
 }) {
-  const feed = useQuery(api.workspaces.paneFeed, { paneId: pane._id });
+  const { code, readOnly } = useView();
+  const feed = useQuery(api.workspaces.paneFeed, { paneId: pane._id, code });
   const me = useQuery(api.profile.me);
   const submit = useMutation(api.workspaces.submitPrompt);
   // Per-pane model pick, remembered on this device. Empty = your Settings default.
-  const pickKey = `tandem-pick-${pane._id}`;
-  const [pick, setPick] = useState(() => localStorage.getItem(pickKey) ?? "");
-  const choose = (v: string) => {
+  const pickKey = `tandem-pick2-${pane._id}`;
+  const [pick, setPick] = useState<Pick>(() => {
+    try { return JSON.parse(localStorage.getItem(pickKey) ?? "{}"); } catch { return {}; }
+  });
+  const choose = (v: Pick) => {
     setPick(v);
-    if (v) localStorage.setItem(pickKey, v);
-    else localStorage.removeItem(pickKey);
+    localStorage.setItem(pickKey, JSON.stringify(v));
   };
   const connected = new Set(me?.connections.filter((c) => c.status === "connected").map((c) => c.provider));
   const cancel = useMutation(api.workspaces.cancelRun);
@@ -528,7 +576,7 @@ function Pane({
               <span className="who">{r.author}</span> {r.prompt}
               {r.provider && (
                 <span className="billed" title="Billed to this person's subscription">
-                  {r.userId === myId ? "your" : `${r.author}'s`} {r.provider}{r.model ? ` · ${r.model}` : ""}
+                  {r.userId === myId ? "your" : `${r.author}'s`} {r.provider}{r.model ? ` · ${modelLabel(r.model)}` : ""}{r.effort ? ` · ${r.effort}` : ""}
                 </span>
               )}
             </div>
@@ -547,9 +595,11 @@ function Pane({
               {r.status === "running" && (
                 <>
                   <span className="spin" /> working{" "}
-                  <button className="ghost" onClick={() => cancel({ runId: r._id })}>
-                    stop
-                  </button>
+                  {!readOnly && (
+                    <button className="ghost" onClick={() => cancel({ runId: r._id })}>
+                      stop
+                    </button>
+                  )}
                 </>
               )}
               {r.status === "error" && "error"}
@@ -559,16 +609,23 @@ function Pane({
         ))}
         <div ref={bottom} />
       </div>
+      {readOnly ? (
+        <div className="prompt-box prompt-box--locked">
+          <span>Watching live. Sign up to send prompts with your own AI subscription.</span>
+          <button className="btn btn--primary btn--sm" onClick={() => goJoin(code)}>Sign up to join</button>
+          <a href="#/signin" className="textlink" onClick={() => code && sessionStorage.setItem("tandem-join", code)}>Sign in</a>
+        </div>
+      ) : (
       <form
         className="prompt-box"
         onSubmit={(e) => {
           e.preventDefault();
           if (!text.trim()) return;
-          const [provider, model] = pick ? pick.split("|") : [];
           submit({
             paneId: pane._id,
             prompt: text.trim(),
-            ...(provider ? { provider: provider as ProviderId, model: model || undefined } : {}),
+            ...(pick.provider ? { provider: pick.provider, model: pick.model || undefined } : {}),
+            ...(pick.effort ? { effort: pick.effort } : {}),
           });
           setText("");
         }}
@@ -586,22 +643,82 @@ function Pane({
           }}
         />
         <div className="prompt-actions">
-          <select className="select select--sm" value={pick} onChange={(e) => choose(e.target.value)}
-            title="Which of your subscriptions and models this pane uses for your prompts">
-            <option value="">My default{me?.profile ? ` (${me.profile.model ?? (me.profile.provider === "claude" ? "Claude" : "ChatGPT")})` : ""}</option>
-            {PROVIDERS.map((pr) => (
-              <optgroup key={pr.id} label={`${pr.id === "claude" ? "Claude" : "ChatGPT"}${connected.has(pr.id) ? "" : " (not connected)"}`}>
-                <option value={`${pr.id}|`} disabled={!connected.has(pr.id)}>{pr.id === "claude" ? "Claude" : "ChatGPT"} default</option>
-                {MODELS[pr.id].map((m) => (
-                  <option key={m} value={`${pr.id}|${m}`} disabled={!connected.has(pr.id)}>{m}</option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+          <ModelPicker pick={pick} onChange={choose} connected={connected}
+            fallback={me?.profile ? (me.profile.model ? modelLabel(me.profile.model) : providerName(me.profile.provider)) : "Default"} />
           <button>Send</button>
         </div>
       </form>
+      )}
     </section>
+  );
+}
+
+type Pick = { provider?: ProviderId; model?: string; effort?: Effort };
+
+// Compact model + effort chooser for a pane's composer.
+function ModelPicker({ pick, onChange, connected, fallback }: {
+  pick: Pick;
+  onChange: (p: Pick) => void;
+  connected: Set<string>;
+  fallback: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  const label = pick.provider ? (pick.model ? modelLabel(pick.model) : providerName(pick.provider)) : fallback;
+  const set = (p: Partial<Pick>) => onChange({ ...pick, ...p });
+  return (
+    <div className="picker" ref={ref}>
+      <button type="button" className="picker__chip" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span className="picker__model">{label}</span>
+        {pick.effort && <span className="picker__effort">{pick.effort}</span>}
+        <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
+      </button>
+      {open && (
+        <div className="picker__menu" role="menu">
+          <button type="button" role="menuitemradio" aria-checked={!pick.provider}
+            className={`picker__item ${!pick.provider ? "on" : ""}`}
+            onClick={() => { set({ provider: undefined, model: undefined }); setOpen(false); }}>
+            My default <span className="picker__sub">{fallback}</span>
+          </button>
+          {PROVIDERS.map((pr) => {
+            const ok = connected.has(pr.id);
+            return (
+              <div key={pr.id} className="picker__group">
+                <div className="picker__heading">
+                  {providerName(pr.id)}
+                  {!ok && <a href="#/settings" className="picker__connect">Connect</a>}
+                </div>
+                {MODELS[pr.id].map((m) => {
+                  const on = pick.provider === pr.id && pick.model === m;
+                  return (
+                    <button key={m} type="button" role="menuitemradio" aria-checked={on} disabled={!ok} data-model={`${pr.id}|${m}`}
+                      className={`picker__item ${on ? "on" : ""}`}
+                      onClick={() => { set({ provider: pr.id, model: m }); setOpen(false); }}>
+                      {modelLabel(m)}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+          <div className="picker__heading">Effort</div>
+          <div className="picker__effort-row" role="radiogroup" aria-label="Reasoning effort">
+            <button type="button" className={!pick.effort ? "on" : ""} onClick={() => set({ effort: undefined })}>auto</button>
+            {EFFORTS.map((e) => (
+              <button key={e} type="button" className={pick.effort === e ? "on" : ""} onClick={() => set({ effort: e })}>{e}</button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -647,7 +764,8 @@ function FileTree({
   open: string | null;
   onOpen: (p: string) => void;
 }) {
-  const files = useQuery(api.files.tree, { workspaceId });
+  const { code, readOnly } = useView();
+  const files = useQuery(api.files.tree, { workspaceId, code });
   const save = useMutation(api.files.save);
   const [drag, setDrag] = useState(false);
   const [upErr, setUpErr] = useState("");
@@ -669,12 +787,12 @@ function FileTree({
   const sorted = [...(files ?? [])].sort((a, b) => a.path.localeCompare(b.path));
   return (
     <div className={`tree ${drag ? "tree--drop" : ""}`}
-      onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
+      onDragOver={(e) => { if (readOnly) return; e.preventDefault(); setDrag(true); }}
       onDragLeave={() => setDrag(false)}
       onDrop={(e) => { e.preventDefault(); setDrag(false); upload(e.dataTransfer.files); }}>
       <div className="tree-head">
         <strong>Files</strong>
-        <span>
+        {!readOnly && <span>
         <label className="ghost upload-btn" title="Upload text files (or drop them here)">
           ↑ upload
           <input type="file" multiple hidden onChange={(e) => { upload(e.target.files); e.target.value = ""; }} />
@@ -688,7 +806,7 @@ function FileTree({
         >
           + file
         </button>
-        </span>
+        </span>}
       </div>
       {upErr && <p className="err tree__err">{upErr}</p>}
       {sorted.length === 0 && <p className="dim">Empty. Drop files here, or let the agent write some.</p>}
@@ -720,7 +838,8 @@ function Editor({
   path: string;
   onClose: () => void;
 }) {
-  const file = useQuery(api.files.get, { workspaceId, path });
+  const { code, readOnly } = useView();
+  const file = useQuery(api.files.get, { workspaceId, path, code });
   const save = useMutation(api.files.save);
   const [draft, setDraft] = useState<string | null>(null);
   const dirty = draft !== null && draft !== file?.content;
@@ -736,19 +855,24 @@ function Editor({
         <strong>{path}</strong>
         <span className="dim">last change by {file?.updatedBy ?? "?"}</span>
         {file?.pendingWrite && <span className="dim">· syncing to disk</span>}
-        <button
-          disabled={!dirty}
-          onClick={async () => {
-            await save({ workspaceId, path, content: draft! });
-            setDraft(null);
-          }}
-        >
-          {dirty ? "Save" : "Saved"}
-        </button>
+        {readOnly ? (
+          <span className="viewing-pill">Read only</span>
+        ) : (
+          <button
+            disabled={!dirty}
+            onClick={async () => {
+              await save({ workspaceId, path, content: draft! });
+              setDraft(null);
+            }}
+          >
+            {dirty ? "Save" : "Saved"}
+          </button>
+        )}
       </div>
       <textarea
         className="code"
         spellCheck={false}
+        readOnly={readOnly}
         value={value}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {

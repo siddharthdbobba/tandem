@@ -172,6 +172,39 @@ await test("sandbox users can't read each other's credentials or other workspace
   assert.doesNotMatch(await as(bobKey, `ls ${R}/${ws}`), /Permission denied/);
 });
 
+await test("share link grants read-only access; writes and wrong codes are refused", async () => {
+  const ws = await alice.mutation(api.workspaces.create, { name: "shared-view" });
+  const { inviteCode: code } = await alice.query(api.workspaces.get, { id: ws });
+  await alice.mutation(api.files.save, { workspaceId: ws, path: "a.txt", content: "secret-ish" });
+  const [pane] = await alice.query(api.workspaces.listPanes, { workspaceId: ws });
+  await alice.mutation(api.workspaces.submitPrompt, { paneId: pane._id, prompt: "visible prompt" });
+  // Anonymous and non-member viewers can read with the code.
+  for (const who of [anon, eve]) {
+    assert.equal((await who.query(api.workspaces.peek, { code }))._id, ws);
+    assert.equal((await who.query(api.workspaces.get, { id: ws, code })).member, false);
+    assert.equal((await who.query(api.workspaces.listPanes, { workspaceId: ws, code })).length, 1);
+    assert.equal((await who.query(api.workspaces.paneFeed, { paneId: pane._id, code }))[0].prompt, "visible prompt");
+    assert.equal((await who.query(api.files.get, { workspaceId: ws, path: "a.txt", code })).content, "secret-ish");
+    assert.ok(Array.isArray(await who.query(api.presence.list, { workspaceId: ws, now: Date.now(), code })));
+  }
+  // Without the code, or with a wrong one, nothing.
+  for (const c of [undefined, "wrong-code-123", code.slice(0, -1)]) {
+    await assert.rejects(anon.query(api.files.tree, { workspaceId: ws, ...(c ? { code: c } : {}) }));
+    await assert.rejects(eve.query(api.workspaces.paneFeed, { paneId: pane._id, ...(c ? { code: c } : {}) }));
+  }
+  assert.equal(await anon.query(api.workspaces.peek, { code: "nope-nope" }), null);
+  // Writes never accept a code: viewers must sign up and join.
+  await assert.rejects(anon.mutation(api.workspaces.submitPrompt, { paneId: pane._id, prompt: "x" }));
+  await assert.rejects(eve.mutation(api.workspaces.submitPrompt, { paneId: pane._id, prompt: "x" }));
+  await assert.rejects(eve.mutation(api.files.save, { workspaceId: ws, path: "b.txt", content: "x" }));
+  await assert.rejects(eve.mutation(api.workspaces.addPane, { workspaceId: ws, title: "x" }));
+  await assert.rejects(eve.mutation(api.presence.heartbeat, { workspaceId: ws }));
+  // Joining with the code turns eve into a member who can write.
+  await eve.mutation(api.workspaces.join, { inviteCode: code });
+  assert.equal((await eve.query(api.workspaces.get, { id: ws })).member, true);
+  await eve.mutation(api.files.save, { workspaceId: ws, path: "b.txt", content: "now ok" });
+});
+
 await test("worker API still rejects missing secret", async () => {
   await assert.rejects(anon.query(api.worker.loginQueue, { secret: "x" }));
   await assert.rejects(alice.query(api.worker.loginQueue, { secret: "" }));

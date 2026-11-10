@@ -583,6 +583,8 @@ function Pane({
   const [text, setText] = useState("");
   const bottom = useRef<HTMLDivElement>(null);
   const running = feed?.find((r) => r.status === "running" || r.status === "queued");
+  const live = feed?.find((r) => r.status === "running");
+  const steer = useMutation(api.workspaces.steerRun);
   const eventCount = feed?.reduce((n, r) => n + r.events.length, 0);
 
   useEffect(() => {
@@ -609,7 +611,7 @@ function Pane({
         {feed?.map((r) => (
           <div key={r._id} className="run">
             <div className="prompt">
-              <span className="who">{r.author}</span> {r.prompt}
+              <span className="who">{r.author}</span>{r.steer && <span className="steer-tag">steer</span>} {r.prompt}
               {r.provider && (
                 <span className="billed" title="Billed to this person's subscription">
                   {r.userId === myId ? "your" : `${r.author}'s`} {r.provider}{r.model ? ` · ${modelLabel(r.model)}` : ""}{r.effort ? ` · ${r.effort}` : ""}
@@ -639,7 +641,7 @@ function Pane({
                 </>
               )}
               {r.status === "error" && "error"}
-              {r.status === "cancelled" && "stopped"}
+              {r.status === "cancelled" && (r.steeredBy ? `interrupted by ${r.steeredBy}` : "stopped")}
             </div>
           </div>
         ))}
@@ -657,19 +659,22 @@ function Pane({
         onSubmit={(e) => {
           e.preventDefault();
           if (!text.trim()) return;
-          submit({
-            paneId: pane._id,
+          const opts = {
             prompt: text.trim(),
             ...(pick.provider ? { provider: pick.provider, model: pick.model || undefined } : {}),
             ...(pick.effort ? { effort: pick.effort } : {}),
-          });
+          };
+          // Mid-run, Enter steers: stop the agent and redirect it. "Queue" waits instead.
+          const queue = (e.nativeEvent as SubmitEvent).submitter?.dataset.queue === "1";
+          if (live && !queue) steer({ runId: live._id, ...opts });
+          else submit({ paneId: pane._id, ...opts });
           setText("");
         }}
       >
         <textarea
           rows={2}
           value={text}
-          placeholder={running ? "Queue a follow-up..." : "Ask the agent to build something..."}
+          placeholder={live ? `Steer the agent (Enter), or queue a follow-up...` : running ? "Queue a follow-up..." : "Ask the agent to build something..."}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -681,7 +686,14 @@ function Pane({
         <div className="prompt-actions">
           <ModelPicker pick={pick} onChange={choose} connected={connected}
             fallback={me?.profile ? (me.profile.model ? modelLabel(me.profile.model) : providerName(me.profile.provider)) : "Default"} />
-          <button>Send</button>
+          {live ? (
+            <div className="steer-btns">
+              <button title="Interrupt the agent now and redirect it (Enter)">Steer</button>
+              <button data-queue="1" className="btn--ghost" title="Send after the current run finishes">Queue</button>
+            </div>
+          ) : (
+            <button>Send</button>
+          )}
         </div>
       </form>
       )}

@@ -128,6 +128,14 @@ client.onUpdate(api.worker.pendingWrites, s, async (files) => {
 // Linux user, with HOME/JCODE_HOME in that user's private directory. That is
 // what keeps one person's subscription tokens away from everyone else.
 const SANDBOX = process.env.TANDEM_AS ?? "/usr/local/sbin/tandem-as";
+// Run a launcher subcommand (grant, session hand-off) and return its stdout.
+const sandboxCmd = (argv) =>
+  new Promise((res) => {
+    let out = "";
+    const p = spawn("sudo", ["-n", SANDBOX, ...argv], { stdio: ["ignore", "pipe", "ignore"] });
+    p.stdout.on("data", (c) => (out += c));
+    p.on("close", () => res(out));
+  });
 function jcodeAs(sandboxKey, cwd, args, effort, autoPoke) {
   const pre = [...(effort ? ["--effort", effort] : []), ...(autoPoke ? ["--auto-poke"] : [])];
   return spawn("sudo", ["-n", SANDBOX, sandboxKey, cwd, "--", "jcode", ...pre, ...args], {
@@ -140,7 +148,12 @@ async function runOne(run, job) {
   const prompt =
     `[Tandem shared workspace. Prompt from ${run.author}. Other people and agents may be ` +
     `editing files in this directory at the same time, so re-read files before editing them. ` +
-    `Keep all work inside the current directory.]\n\n${run.prompt}`;
+    `Keep all work inside the current directory.]\n\n` +
+    (run.steer
+      ? `[${run.author} interrupted your previous turn to steer you. Your last tool call may not have ` +
+        `finished; check before assuming it ran. Adjust course using this message:]\n\n`
+      : "") +
+    run.prompt;
   // Events are written in order: each waits for the previous one.
   let chain = Promise.resolve();
   const emit = (kind, text) =>
@@ -150,15 +163,15 @@ async function runOne(run, job) {
 
   const args = ["run", "--ndjson", "--no-update", "--quiet", "-p", job.provider];
   if (job.model) args.push("-m", job.model);
-  if (job.sessionId) args.push("--resume", job.sessionId);
-  args.push(prompt);
 
-  log("run", run._id, "as", job.sandboxKey, job.provider, job.model ?? "", job.effort ?? "", job.sessionId ? "(resume)" : "(new)");
+  log("run", run._id, "as", job.sandboxKey, job.provider, job.model ?? "", job.effort ?? "");
   // Give this member's sandbox user access to this one workspace (idempotent).
-  await new Promise((res) => {
-    const g = spawn("sudo", ["-n", SANDBOX, job.sandboxKey, dir, "--grant"], { stdio: "ignore" });
-    g.on("close", res);
-  });
+  await sandboxCmd([job.sandboxKey, dir, "--grant"]);
+  // One memory per pane: hand the pane's session to whoever is prompting now.
+  const paneKey = String(run.paneId);
+  const shared = (await sandboxCmd([job.sandboxKey, dir, "--put-session", paneKey])).trim();
+  if (/^session_[a-z0-9_]+$/.test(shared)) args.push("--resume", shared);
+  args.push(prompt);
   const child = jcodeAs(job.sandboxKey, dir, args, job.effort, job.autoPoke);
   active.set(run._id, child);
 
@@ -228,6 +241,10 @@ async function runOne(run, job) {
   }
   await chain;
   await safeSync(run.workspaceId);
+  // Save the conversation back as the pane's shared memory (also after a stop/steer).
+  if (tr.sessionId && /^session_[a-z0-9_]+$/.test(tr.sessionId)) {
+    await sandboxCmd([job.sandboxKey, dir, "--take-session", paneKey, tr.sessionId]);
+  }
   await client.mutation(api.worker.finish, {
     ...s,
     runId: run._id,
@@ -324,20 +341,27 @@ if (stale) log("marked", stale, "stale runs as error");
 // runs just stay queued until a slot frees up.
 const MAX_ACTIVE = Number(process.env.MAX_ACTIVE ?? 4);
 let dispatching = false;
+const paneOf = new Map(); // runId -> paneId, for runs whose process hasn't fully finished
 async function dispatch(runs) {
   if (dispatching) return;
   dispatching = true;
   try {
+    // Steers jump the line so a redirect isn't stuck behind queued follow-ups.
+    runs = [...runs].sort((a, b) => (b.steer ? 1 : 0) - (a.steer ? 1 : 0));
     for (const run of runs) {
       if (active.size >= MAX_ACTIVE) break;
       if (active.has(run._id)) continue;
+      // A steered/stopped run on this pane may still be saving its memory. Wait for it.
+      if ([...paneOf.values()].includes(String(run.paneId))) continue;
       const claimed = await client.mutation(api.worker.claim, { ...s, runId: run._id }).catch(() => null);
       if (!claimed) continue;
       active.set(run._id, null); // reserve the slot before spawning
+      paneOf.set(run._id, String(run.paneId));
       runOne(claimed.run, claimed)
         .catch((e) => log("run error", e))
         .finally(() => {
           active.delete(run._id);
+          paneOf.delete(run._id);
           poll();
         });
     }

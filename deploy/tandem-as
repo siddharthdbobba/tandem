@@ -49,6 +49,47 @@ if [ "${1:-}" = "--grant" ]; then
   exit 0
 fi
 
+# Shared pane memory. The master copy of each pane's Jcode session lives in a
+# root-only dir. It is copied into the prompter's sandbox before a run and
+# back out after, always reading/writing the sandbox side AS that user, so a
+# symlink planted by an agent can never make root touch other files.
+SESS_ROOT=/srv/tandem/sessions
+as_user() { setpriv --reuid="$user" --regid=tandem --init-groups --inh-caps=-all "$@"; }
+if [ "${1:-}" = "--put-session" ]; then
+  pane="${2:-}"; [[ "$pane" =~ ^[a-z0-9]{1,40}$ ]] || { echo "bad pane" >&2; exit 2; }
+  src="$SESS_ROOT/$pane.json"
+  [ -f "$src" ] || exit 0   # no shared memory yet: print nothing
+  # Drop the previous prompter's account pin so any login can resume it.
+  sid=$(python3 - "$src" <<'PY'
+import json, re, sys
+d = json.load(open(sys.argv[1]))
+sid = d.get("id", "")
+if not re.fullmatch(r"session_[a-z0-9_]{1,100}", sid): sys.exit(1)
+print(sid)
+PY
+) || { echo "bad session" >&2; exit 2; }
+  install -d -m 700 -o "$user" -g tandem "$home/.jcode" "$home/.jcode/sessions"
+  python3 -c '
+import json, sys
+d = json.load(open(sys.argv[1]))
+for k in [k for k in d if k == "route_api_method" or "account" in k]: d.pop(k)
+d["status"] = "Closed"
+json.dump(d, sys.stdout)' "$src" | as_user bash -c 'umask 077; cat > "$1.tmp" && mv -f "$1.tmp" "$1"' _ "$home/.jcode/sessions/$sid.json"
+  echo "$sid"
+  exit 0
+fi
+if [ "${1:-}" = "--take-session" ]; then
+  pane="${2:-}"; sid="${3:-}"
+  [[ "$pane" =~ ^[a-z0-9]{1,40}$ ]] || { echo "bad pane" >&2; exit 2; }
+  [[ "$sid" =~ ^session_[a-z0-9_]{1,100}$ ]] || { echo "bad session" >&2; exit 2; }
+  install -d -m 700 -o root -g root "$SESS_ROOT"
+  tmp=$(mktemp "$SESS_ROOT/.in.XXXXXX")
+  as_user head -c 50000000 "$home/.jcode/sessions/$sid.json" > "$tmp" || { rm -f "$tmp"; exit 1; }
+  python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$tmp" || { rm -f "$tmp"; echo "bad session json" >&2; exit 1; }
+  chmod 600 "$tmp" && mv -f "$tmp" "$SESS_ROOT/$pane.json"
+  exit 0
+fi
+
 [ "${1:-}" = "--" ] && shift
 [ "${1:-}" = "jcode" ] || { echo "only jcode allowed" >&2; exit 2; }
 shift
@@ -69,6 +110,6 @@ effort_env=()
 
 exec setpriv --reuid="$user" --regid=tandem --init-groups --inh-caps=-all \
   env -i HOME="$home" JCODE_HOME="$home/.jcode" USER="$user" LOGNAME="$user" \
-  PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 JCODE_NO_TELEMETRY=1 JCODE_RUN_AUTO_POKE=$poke \
+  PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 JCODE_NO_TELEMETRY=1 JCODE_MEMORY_ENABLED=0 JCODE_RUN_AUTO_POKE=$poke \
   TERM=dumb TMPDIR="$home/tmp" "${effort_env[@]}" \
   bash -c 'umask 007; cd "$0" && exec /usr/local/bin/jcode "$@"' "$cwd_real" "$@"

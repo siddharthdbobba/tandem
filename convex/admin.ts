@@ -88,3 +88,76 @@ export const sandboxKeys = internalQuery({
   args: {},
   handler: async (ctx) => (await ctx.db.query("profiles").collect()).map((p) => p.sandboxKey),
 });
+
+// Operator-only (CLI) helpers for live end-to-end checks on a real account.
+// Queue a prompt as a given user in a given pane, exactly like the UI would.
+export const queueAs = internalMutation({
+  args: {
+    email: v.string(),
+    paneId: v.id("panes"),
+    prompt: v.string(),
+    model: v.optional(v.string()),
+    steerRunId: v.optional(v.id("runs")),
+  },
+  handler: async (ctx, { email, paneId, prompt, model, steerRunId }) => {
+    const user = (await ctx.db.query("users").collect()).find((u) => u.email === email);
+    if (!user) throw new Error("no such user");
+    const profile = await ctx.db.query("profiles").withIndex("by_user", (q) => q.eq("userId", user._id)).unique();
+    const pane = await ctx.db.get(paneId);
+    if (!profile || !pane) throw new Error("missing profile or pane");
+    if (steerRunId) {
+      const r = await ctx.db.get(steerRunId);
+      if (r && (r.status === "running" || r.status === "queued"))
+        await ctx.db.patch(steerRunId, { status: "cancelled", steeredBy: profile.name, finishedAt: Date.now() });
+    }
+    return ctx.db.insert("runs", {
+      workspaceId: pane.workspaceId, paneId, prompt, userId: user._id, author: profile.name,
+      status: "queued", steer: !!steerRunId, wantProvider: "claude", wantModel: model,
+    });
+  },
+});
+
+// Make a scratch workspace + pane owned by a user (for live checks).
+export const scratchWorkspace = internalMutation({
+  args: { email: v.string(), name: v.string() },
+  handler: async (ctx, { email, name }) => {
+    const user = (await ctx.db.query("users").collect()).find((u) => u.email === email);
+    if (!user) throw new Error("no such user");
+    const id = await ctx.db.insert("workspaces", { name, ownerId: user._id, inviteCode: Math.random().toString(36).slice(2, 14) });
+    await ctx.db.insert("members", { workspaceId: id, userId: user._id });
+    const paneId = await ctx.db.insert("panes", { workspaceId: id, title: "Main" });
+    return { workspaceId: id, paneId };
+  },
+});
+
+// Remove a scratch workspace and everything in it.
+export const dropWorkspace = internalMutation({
+  args: { workspaceId: v.id("workspaces") },
+  handler: async (ctx, { workspaceId }) => {
+    for (const t of ["members", "panes", "files", "presence"] as const) {
+      const rows = await ctx.db.query(t as any).filter((q: any) => q.eq(q.field("workspaceId"), workspaceId)).collect();
+      for (const r of rows) await ctx.db.delete(r._id);
+    }
+    const runs = await ctx.db.query("runs").filter((q) => q.eq(q.field("workspaceId"), workspaceId)).collect();
+    for (const r of runs) {
+      for (const e of await ctx.db.query("events").filter((q) => q.eq(q.field("runId"), r._id)).collect()) await ctx.db.delete(e._id);
+      await ctx.db.delete(r._id);
+    }
+    await ctx.db.delete(workspaceId);
+  },
+});
+
+// Read a pane's runs and events compactly.
+export const paneLog = internalQuery({
+  args: { paneId: v.id("panes") },
+  handler: async (ctx, { paneId }) => {
+    const runs = await ctx.db.query("runs").withIndex("by_pane", (q) => q.eq("paneId", paneId)).collect();
+    const out = [];
+    for (const r of runs) {
+      const ev = await ctx.db.query("events").withIndex("by_pane", (q) => q.eq("paneId", paneId)).collect();
+      out.push({ id: r._id, author: r.author, steer: !!r.steer, status: r.status, steeredBy: r.steeredBy,
+        prompt: r.prompt.slice(0, 60), events: ev.filter((e) => e.runId === r._id).map((e) => `${e.kind}: ${e.text.slice(0, 120)}`) });
+    }
+    return out;
+  },
+});

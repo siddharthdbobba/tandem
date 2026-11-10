@@ -164,6 +164,8 @@ export const paneFeed = query({
       provider: r.provider,
       model: r.model,
       effort: r.effort,
+      steer: r.steer,
+      steeredBy: r.steeredBy,
       events: events.filter((e) => e.runId === r._id),
     }));
   },
@@ -208,5 +210,42 @@ export const cancelRun = mutation({
     if (run.status === "queued" || run.status === "running") {
       await ctx.db.patch(runId, { status: "cancelled", finishedAt: Date.now() });
     }
+  },
+});
+
+// Redirect the agent mid-run. Any member can steer, not just the original
+// prompter: the current run is stopped (its progress is kept in the pane's
+// memory) and this message goes next, on the steerer's own subscription.
+export const steerRun = mutation({
+  args: {
+    runId: v.id("runs"),
+    prompt: v.string(),
+    provider: v.optional(v.union(v.literal("claude"), v.literal("openai"))),
+    model: v.optional(v.string()),
+    effort: v.optional(v.union(v.literal("low"), v.literal("medium"), v.literal("high"), v.literal("xhigh"), v.literal("max"))),
+  },
+  handler: async (ctx, { runId, prompt, provider, model, effort }) => {
+    const run = await ctx.db.get(runId);
+    if (!run) throw new Error("run not found");
+    const userId = await requireMember(ctx, run.workspaceId);
+    if (model && !/^[A-Za-z0-9._:\-/\[\]]{1,80}$/.test(model)) throw new Error("bad model name");
+    prompt = prompt.trim();
+    if (!prompt || prompt.length > 100_000) throw new Error("prompt must be 1 to 100k chars");
+    const profile = await ensureProfile(ctx, userId);
+    if (run.status === "queued" || run.status === "running") {
+      await ctx.db.patch(runId, { status: "cancelled", steeredBy: profile.name, finishedAt: Date.now() });
+    }
+    return ctx.db.insert("runs", {
+      workspaceId: run.workspaceId,
+      paneId: run.paneId,
+      prompt,
+      userId,
+      author: profile.name,
+      status: "queued",
+      steer: true,
+      wantProvider: provider,
+      wantModel: model || undefined,
+      effort,
+    });
   },
 });

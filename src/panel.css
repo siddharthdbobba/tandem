@@ -235,3 +235,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="tab"]:focus-v
   .layout main .panes { flex: none; }
   .layout main .add-pane { flex: none; }
 }
+
+.provider-name { display: inline-flex; flex-direction: column; line-height: 1.25; }
+.provider-name small { white-space: nowrap; font-size: var(--text-xs); color: var(--color-muted); font-weight: 400; }

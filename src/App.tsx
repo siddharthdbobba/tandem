@@ -19,8 +19,8 @@ import Landing from "./Landing";
 
 const COLORS = ["#e5484d", "#f76b15", "#ffc53d", "#46a758", "#12a594", "#0090ff", "#8e4ec6", "#d6409f"];
 const PROVIDERS = [
-  { id: "claude", label: "Claude (Pro / Max)" },
-  { id: "openai", label: "ChatGPT (Plus / Pro)" },
+  { id: "claude", label: "Claude", plans: "Pro or Max" },
+  { id: "openai", label: "ChatGPT", plans: "Plus or Pro" },
 ] as const;
 type ProviderId = (typeof PROVIDERS)[number]["id"];
 // From `jcode model list -p <provider>` on the server.
@@ -399,7 +399,7 @@ function Settings() {
                 <label className="radio">
                   <input type="radio" name="provider" checked={p.provider === pr.id}
                     onChange={() => update({ provider: pr.id, model: null }).then(() => flash("Default saved"))} />
-                  {pr.label}
+                  <span className="provider-name">{pr.label}<small>{pr.plans}</small></span>
                 </label>
                 <span className={`badge ${st?.status ?? "none"}`}>
                   {st?.status === "connected" ? "connected" : st?.status === "error" ? "needs reconnect" : "not connected"}

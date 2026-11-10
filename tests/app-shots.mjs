@@ -36,6 +36,7 @@ await send("Page.navigate", { url: `${UI}/#/signin` }); await sleep(3000);
 await js(`(() => { const set = (s, v) => { const el = document.querySelector(s); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); }; set('input[name=email]', '${email}'); set('input[name=password]', '${pw}'); document.querySelector('form.stack').requestSubmit(); })()`);
 await sleep(4000);
 await shoot("home.png");
+await shoot("home-m.png", 390, 844);
 await js("document.querySelector('.tpl')?.click()"); await sleep(500); await shoot("home-picked.png");
 await send("Page.navigate", { url: `${UI}/#/w/${ws}` }); await sleep(4500);
 await shoot("workspace.png");
@@ -43,6 +44,7 @@ await js("[...document.querySelectorAll('.file')].find(f=>f.querySelector('.file
 await shoot("doc.png");
 await send("Page.navigate", { url: `${UI}/#/settings` }); await sleep(3000);
 await shoot("settings.png");
+await shoot("settings-m.png", 390, 844);
 // Team chat with a message, a poll and a reaction.
 await u.mutation(api.chat.send, { workspaceId: ws, text: "Who's bringing the stove? @ai can you compare Tuolumne vs Upper Pines?" }).catch(() => {});
 await u.mutation(api.chat.send, { workspaceId: ws, text: "/poll Saturday dinner? | Tacos | Pasta | Chili" });

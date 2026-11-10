@@ -43,7 +43,7 @@ export default function Landing() {
           <p className="lp-cta__fine">Your AI login stays in a private sandbox only your prompts use. <a href="#/privacy">Privacy</a></p>
         </section>
       </main>
-      <footer className="lp-foot"><RidgeDivider /><div><span className="brand"><PeakMark />Tandem</span><nav aria-label="Footer"><a href="#/privacy">Privacy</a><a href={GITHUB} target="_blank" rel="noreferrer">GitHub</a></nav></div></footer>
+      <footer className="lp-foot"><RidgeDivider /><div><span className="brand"><PeakMark />Tandem</span><nav aria-label="Footer"><a href="#/new">What's new</a><a href="#/privacy">Privacy</a><a href={GITHUB} target="_blank" rel="noreferrer">GitHub</a></nav></div></footer>
     </div>
   );
 }

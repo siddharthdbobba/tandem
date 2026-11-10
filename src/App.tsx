@@ -10,6 +10,7 @@ import { Away } from "./Away";
 import { Shortcuts } from "./Shortcuts";
 import { PublicPage } from "./Publish";
 import Privacy from "./Privacy";
+import WhatsNew from "./WhatsNew";
 import { Palette, type Command } from "./Palette";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery } from "convex/react";
@@ -78,6 +79,7 @@ function SignedOut() {
   const route = useRoute();
   if (route.kind === "join" && route.arg) return <Viewer code={route.arg} />;
   if (route.kind === "privacy") return <Privacy />;
+  if (route.kind === "new") return <WhatsNew />;
   if (route.kind === "signin") return <SignIn initial="signIn" />;
   if (route.kind === "signup") return <SignIn initial="signUp" />;
   return <Landing />;
@@ -200,6 +202,7 @@ function SignedIn() {
   if (route.kind === "join") sessionStorage.removeItem("tandem-join");
   if (route.kind === "settings") return <Settings />;
   if (route.kind === "privacy") return <Privacy />;
+  if (route.kind === "new") return <WhatsNew />;
   if (route.kind === "join") return <Join code={route.arg} />;
   if (route.kind === "w" && route.arg) return <Workspace id={route.arg as Id<"workspaces">} />;
   return <Home />;
@@ -334,7 +337,7 @@ function Home() {
       <main className="home">
         <div className="home__head">
           <h1 className="home__title">{first ? `Hey ${first}.` : "Welcome."} What are you working on?</h1>
-          <p className="home__sub">Every workspace has shared files, an AI that can browse and build, and a link to bring friends in.</p>
+          <p className="home__sub">Every workspace has shared files, an AI that can browse and build, and a link to bring friends in. <a href="#/new" className="textlink">What's new</a></p>
         </div>
 
         {me && !connected && (

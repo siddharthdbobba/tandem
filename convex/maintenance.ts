@@ -81,3 +81,20 @@ export const purgeWorkspace = internalMutation({
     if (await ctx.db.get(workspaceId)) await ctx.db.delete(workspaceId);
   },
 });
+
+// Remove rows whose workspace was already deleted (from older cleanup versions).
+export const sweepOrphans = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const counts: Record<string, number> = {};
+    for (const t of ["messages", "changes", "publishes", "browserFrames", "files", "deletions"] as const) {
+      for (const r of await ctx.db.query(t as any).take(1000) as any[]) {
+        if (await ctx.db.get(r.workspaceId)) continue;
+        if (t === "files") { await deleteFile(ctx, r._id); }
+        else { if (r.image) await ctx.storage.delete(r.image); await ctx.db.delete(r._id); }
+        counts[t] = (counts[t] ?? 0) + 1;
+      }
+    }
+    return counts;
+  },
+});

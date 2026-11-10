@@ -27,7 +27,7 @@ const send = (method, params = {}) => new Promise((r) => { const i = ++n; pend.s
 const js = async (e) => (await send("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true })).result?.value;
 const shoot = async (name, w = 1440, h = 900) => {
   await send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: w < 600 });
-  await send("Emulation.setTouchEmulationEnabled", { enabled: w < 600, maxTouchPoints: w < 600 ? 5 : 0 });
+  await send("Emulation.setTouchEmulationEnabled", w < 600 ? { enabled: true, maxTouchPoints: 5 } : { enabled: false });
   await send("Emulation.setEmulatedMedia", { features: [{ name: "hover", value: w < 600 ? "none" : "hover" }, { name: "pointer", value: w < 600 ? "coarse" : "fine" }] });
   await sleep(800);
   const s = await send("Page.captureScreenshot", { format: "png" });

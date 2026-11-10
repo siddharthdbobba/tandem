@@ -44,6 +44,10 @@ await js(`(() => { const set = (s, v) => { const el = document.querySelector(s);
 await sleep(4000); await audit("home");
 await send("Page.navigate", { url: `${UI}/#/w/${ws}` }); await sleep(4000); await audit("workspace");
 await js("localStorage.setItem('tandem-tour-done','1'); [...document.querySelectorAll('.panel-toggle')].find(b=>b.textContent.includes('Chat'))?.click()"); await sleep(1500); await audit("chat");
+// Desktop (mouse) must not show the touch-only "+" reaction toggle.
+const toggle = await js("(() => { const t = document.querySelector('.react-toggle'); return t ? getComputedStyle(t).display : 'absent'; })()");
+console.log(`desktop react-toggle display: ${toggle}`);
+if (toggle !== "none" && toggle !== "absent") total++;
 await send("Page.navigate", { url: `${UI}/#/settings` }); await sleep(3000); await audit("settings");
 
 clearTimeout(kill); sock.close(); proc.kill("SIGKILL");

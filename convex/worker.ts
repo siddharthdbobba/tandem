@@ -268,6 +268,27 @@ export const filePaths = query({
 
 // ---------- binary files + browser frames (Convex file storage) ----------
 
+// What a run changed (from a before/after snapshot of the folder).
+export const recordChanges = mutation({
+  args: {
+    secret: v.string(),
+    runId: v.id("runs"),
+    items: v.array(v.object({
+      path: v.string(),
+      kind: v.union(v.literal("added"), v.literal("modified"), v.literal("deleted")),
+      binary: v.optional(v.boolean()),
+      before: v.optional(v.string()),
+      after: v.optional(v.string()),
+    })),
+  },
+  handler: async (ctx, { secret, runId, items }) => {
+    check(secret);
+    const run = await ctx.db.get(runId);
+    if (!run) return;
+    for (const it of items) await ctx.db.insert("changes", { runId, workspaceId: run.workspaceId, ...it });
+  },
+});
+
 export const uploadUrl = mutation({
   args: { secret: v.string() },
   handler: async (ctx, { secret }) => {
@@ -371,5 +392,22 @@ export const markWritten = mutation({
     if (f && (f.blob ? f.hash === content : (await readContent(ctx, fileId)) === content)) {
       await ctx.db.patch(fileId, { pendingWrite: false });
     }
+  },
+});
+
+// Browser-side deletions the worker must apply to disk.
+export const pendingDeletions = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    check(secret);
+    return ctx.db.query("deletions").take(50);
+  },
+});
+
+export const doneDeletion = mutation({
+  args: { secret: v.string(), id: v.id("deletions") },
+  handler: async (ctx, { secret, id }) => {
+    check(secret);
+    if (await ctx.db.get(id)) await ctx.db.delete(id);
   },
 });

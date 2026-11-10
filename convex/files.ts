@@ -118,3 +118,37 @@ export const browserFrame = query({
     return { url: f.url, title: f.title, by: f.by, at: f.at, image: await ctx.storage.getUrl(f.image) };
   },
 });
+
+// Delete a file (and remove it from the workspace disk).
+export const remove = mutation({
+  args: { workspaceId: v.id("workspaces"), path: v.string() },
+  handler: async (ctx, { workspaceId, path }) => {
+    await requireMember(ctx, workspaceId);
+    path = checkPath(path);
+    const f = await findFile(ctx, workspaceId, path);
+    if (f) await deleteFile(ctx, f._id);
+    await ctx.db.insert("deletions", { workspaceId, path });
+  },
+});
+
+// Rename / move a text file.
+export const move = mutation({
+  args: { workspaceId: v.id("workspaces"), from: v.string(), to: v.string() },
+  handler: async (ctx, { workspaceId, from, to }) => {
+    const userId = await requireMember(ctx, workspaceId);
+    const p = await ensureProfile(ctx, userId);
+    from = checkPath(from);
+    to = checkPath(to);
+    if (from === to) return;
+    const f = await findFile(ctx, workspaceId, from);
+    if (!f) throw new Error("file not found");
+    if (await findFile(ctx, workspaceId, to)) throw new Error("a file with that name already exists");
+    if (f.blob) {
+      await ctx.db.patch(f._id, { path: to, pendingWrite: true, updatedBy: p.name });
+    } else {
+      await writeFile(ctx, workspaceId, to, await readContent(ctx, f._id), p.name, true);
+      await deleteFile(ctx, f._id);
+    }
+    await ctx.db.insert("deletions", { workspaceId, path: from });
+  },
+});

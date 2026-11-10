@@ -698,3 +698,30 @@ aside { border-right: var(--rule); overflow: auto; background: var(--color-paper
   aside { max-height: 28vh; }
   .layout main { padding: var(--space-sm); }
 }
+
+/* run changes + diff */
+.changes { border: var(--rule); border-radius: var(--radius-sm); margin: 6px 0 2px; background: var(--color-paper); overflow: hidden; }
+.changes__head { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: var(--color-paper-2); border-bottom: var(--rule); }
+.changes__title { font-size: var(--text-xs); font-weight: 600; color: var(--color-ink-2); }
+.changes__undo-all { font-size: var(--text-xs) !important; }
+.changes__list { list-style: none; margin: 0; padding: 0; }
+.changes__file {
+  display: flex !important; align-items: center; gap: 8px; width: 100%; height: auto !important; padding: 6px 10px !important;
+  background: transparent !important; color: var(--color-ink-2) !important; border: 0 !important; border-radius: 0 !important;
+  font-family: var(--font-mono); font-size: 12px !important; text-align: left; justify-content: flex-start !important; cursor: pointer;
+}
+.changes__file:hover { background: var(--color-paper-2) !important; }
+.changes__file.reverted .changes__path { text-decoration: line-through; color: var(--color-muted); }
+.changes__kind { width: 16px; text-align: center; font-weight: 700; }
+.changes__kind.added { color: var(--color-ok-ink); } .changes__kind.deleted { color: var(--color-danger-ink); } .changes__kind.modified { color: #b4691f; }
+.changes__path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.changes__tag { font-family: var(--font-body); font-size: var(--text-2xs); color: var(--color-muted); border: var(--rule); border-radius: 4px; padding: 0 5px; }
+.diff { border-top: var(--rule); }
+.diff.dim { padding: 8px 12px; font-size: var(--text-xs); }
+.diff__body { margin: 0; max-height: 320px; overflow: auto; font-family: var(--font-mono); font-size: 12px; line-height: 1.55; background: #fff; }
+.diff__row { padding: 0 10px; white-space: pre-wrap; word-break: break-word; }
+.diff__row.add { background: #e8f5ec; color: #1d5a37; }
+.diff__row.del { background: #fbeceb; color: #8a2f2a; }
+.diff__row.gap { color: var(--color-muted); background: var(--color-paper-2); font-style: italic; }
+.diff__sign { display: inline-block; width: 14px; color: inherit; opacity: .7; user-select: none; }
+.diff__actions { display: flex; gap: var(--space-sm); align-items: center; padding: 6px 10px; border-top: var(--rule); background: var(--color-paper-2); }

@@ -152,6 +152,26 @@ export default defineSchema({
     content: v.string(),
   }).index("by_file", ["fileId"]),
 
+  // Files deleted in the browser; the worker removes them from disk, then drops the row.
+  deletions: defineTable({
+    workspaceId: v.id("workspaces"),
+    path: v.string(),
+  }),
+
+  // What each agent run changed, so people can review a diff and undo it.
+  changes: defineTable({
+    runId: v.id("runs"),
+    workspaceId: v.id("workspaces"),
+    path: v.string(),
+    kind: v.union(v.literal("added"), v.literal("modified"), v.literal("deleted")),
+    before: v.optional(v.string()), // text before the run (absent for added / binary)
+    after: v.optional(v.string()), // text after the run (absent for deleted / binary)
+    binary: v.optional(v.boolean()),
+    reverted: v.optional(v.boolean()),
+  })
+    .index("by_run", ["runId"])
+    .index("by_workspace", ["workspaceId"]),
+
   // Who is here right now.
   presence: defineTable({
     workspaceId: v.id("workspaces"),

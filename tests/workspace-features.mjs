@@ -104,5 +104,53 @@ await test("instructions limit and name validation", async () => {
   await assert.rejects(ann.mutation(api.chat.send, { workspaceId: ws, text: "  " }));
 });
 
+await test("change log: diff + undo a modify, an add and a delete; undo reaches disk", async () => {
+  // Simulate a run's changes via the worker API path: write files as the agent would, then record.
+  const ws = await ann.mutation(api.workspaces.create, { name: "Undo" });
+  const [pane] = await ann.query(api.workspaces.listPanes, { workspaceId: ws });
+  await ann.mutation(api.files.save, { workspaceId: ws, path: "a.md", content: "old\n" });
+  await until(async () => (await sh(`cat /srv/tandem/workspaces/${ws}/a.md 2>/dev/null || true`)) === "old", 20000, "a on disk");
+  // An agent "run": modify a.md, add b.md (through the disk, like the agent does).
+  const runId = await ann.mutation(api.workspaces.submitPrompt, { paneId: pane._id, prompt: "pretend" });
+  await ann.mutation(api.workspaces.cancelRun, { runId });
+  const secret = (await sh("cat ~/convex-backend/worker_secret")).trim();
+  if (!secret) throw new Error("no worker secret available to simulate a run");
+  const { ConvexHttpClient } = await import("convex/browser");
+  const w = new ConvexHttpClient(URL);
+  await w.mutation(api.worker.recordChanges, { secret, runId, items: [
+    { path: "a.md", kind: "modified", before: "old\n", after: "new\n" },
+    { path: "b.md", kind: "added", after: "added\n" },
+    { path: "c.md", kind: "deleted", before: "gone\n" },
+  ] });
+  await ann.mutation(api.files.save, { workspaceId: ws, path: "a.md", content: "new\n" });
+  await ann.mutation(api.files.save, { workspaceId: ws, path: "b.md", content: "added\n" });
+  const list = await ben.query(api.changes.forRun, { runId }).catch(() => null);
+  assert.equal(list, null, "non-member can't read changes");
+  const ch = await ann.query(api.changes.forRun, { runId });
+  assert.deepEqual(ch.map((c) => c.kind).sort(), ["added", "deleted", "modified"]);
+  const d = await ann.query(api.changes.diff, { changeId: ch.find((c) => c.path === "a.md")._id });
+  assert.equal(d.before, "old\n"); assert.equal(d.after, "new\n");
+  assert.equal(await ann.mutation(api.changes.revertRun, { runId }), 3);
+  assert.equal((await ann.query(api.files.get, { workspaceId: ws, path: "a.md" })).content, "old\n");
+  assert.equal(await ann.query(api.files.get, { workspaceId: ws, path: "b.md" }), null);
+  assert.equal((await ann.query(api.files.get, { workspaceId: ws, path: "c.md" })).content, "gone\n");
+  await until(async () => (await sh(`cat /srv/tandem/workspaces/${ws}/a.md; test -e /srv/tandem/workspaces/${ws}/b.md && echo B; cat /srv/tandem/workspaces/${ws}/c.md`)) === "old\ngone", 20000, "undo on disk");
+  assert.ok((await ann.query(api.changes.forRun, { runId })).every((c) => c.reverted));
+  assert.equal(await ann.mutation(api.changes.revertRun, { runId }), 0, "idempotent");
+});
+
+await test("files: delete and rename reach disk; outsiders blocked", async () => {
+  const ws = await ann.mutation(api.workspaces.create, { name: "Files" });
+  await ann.mutation(api.files.save, { workspaceId: ws, path: "x.md", content: "x\n" });
+  await until(async () => (await sh(`cat /srv/tandem/workspaces/${ws}/x.md 2>/dev/null || true`)) === "x", 20000, "x on disk");
+  await assert.rejects(cat.mutation(api.files.remove, { workspaceId: ws, path: "x.md" }));
+  await ann.mutation(api.files.move, { workspaceId: ws, from: "x.md", to: "notes/y.md" });
+  await until(async () => (await sh(`test -e /srv/tandem/workspaces/${ws}/x.md && echo X; cat /srv/tandem/workspaces/${ws}/notes/y.md 2>/dev/null || true`)) === "x", 20000, "moved on disk");
+  await assert.rejects(ann.mutation(api.files.move, { workspaceId: ws, from: "notes/y.md", to: "../evil" }));
+  await ann.mutation(api.files.remove, { workspaceId: ws, path: "notes/y.md" });
+  await until(async () => (await sh(`test -e /srv/tandem/workspaces/${ws}/notes/y.md && echo Y || echo gone`)) === "gone", 20000, "deleted on disk");
+  assert.equal((await ann.query(api.files.tree, { workspaceId: ws })).length, 0);
+});
+
 console.log(results.join("\n"));
 process.exit(results.some((r) => r.startsWith("FAIL")) ? 1 : 0);

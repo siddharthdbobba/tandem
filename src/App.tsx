@@ -1,5 +1,6 @@
 import { renderMarkdown, tidyPaths } from "./markdown";
 import { PeakMark } from "./art";
+import { RunChanges } from "./Changes";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
@@ -715,6 +716,9 @@ function Pane({
                   {tidyPaths(e.text)}
                 </pre>
               ),
+            )}
+            {(r.status === "done" || r.status === "error" || r.status === "cancelled") && (
+              <RunChanges runId={r._id} code={code} readOnly={readOnly} />
             )}
             <div className={`status ${r.status}`}>
               {r.status === "queued" && "queued"}

@@ -197,6 +197,65 @@ client.onUpdate(api.worker.pendingWrites, s, async (files) => {
   }
 });
 
+// ---------- deletions from the browser -> disk ----------
+
+client.onUpdate(api.worker.pendingDeletions, s, async (rows) => {
+  for (const d of rows) {
+    try {
+      const root = dirFor(d.workspaceId);
+      const abs = path.join(root, d.path);
+      if (abs.startsWith(root + path.sep)) {
+        // Refuse to follow symlinks out of the workspace; lstat the target itself.
+        const st = fs.lstatSync(abs, { throwIfNoEntry: false });
+        if (st && (st.isFile() || st.isSymbolicLink())) fs.unlinkSync(abs);
+        snapshots.get(d.workspaceId)?.delete(d.path);
+      }
+    } catch (e) {
+      log("delete failed", d.path, e.message);
+    }
+    await client.mutation(api.worker.doneDeletion, { ...s, id: d._id }).catch(() => {});
+  }
+});
+
+// ---------- per-run change log (diff + undo) ----------
+
+const MAX_DIFF_TEXT = 200_000;
+async function recordChanges(run, dir, before) {
+  const after = readTree(dir);
+  const items = [];
+  for (const [p, c] of after) {
+    const old = before.get(p);
+    if (old === c) continue;
+    const bin = c.startsWith(BIN) || (old ?? "").startsWith(BIN);
+    items.push({
+      path: p,
+      kind: old === undefined ? "added" : "modified",
+      binary: bin,
+      before: bin || old === undefined ? undefined : old.slice(0, MAX_DIFF_TEXT),
+      after: bin ? undefined : c.slice(0, MAX_DIFF_TEXT),
+    });
+  }
+  for (const [p, old] of before) {
+    if (after.has(p)) continue;
+    const bin = old.startsWith(BIN);
+    items.push({ path: p, kind: "deleted", binary: bin, before: bin ? undefined : old.slice(0, MAX_DIFF_TEXT) });
+  }
+  if (!items.length) return;
+  // Keep each mutation well under Convex's argument size limit.
+  let batch = [], bytes = 0;
+  const flush = async () => {
+    if (!batch.length) return;
+    await client.mutation(api.worker.recordChanges, { ...s, runId: run._id, items: batch });
+    batch = []; bytes = 0;
+  };
+  for (const it of items.slice(0, 200)) {
+    const size = (it.before?.length ?? 0) + (it.after?.length ?? 0);
+    if (bytes + size > 1_500_000) await flush();
+    batch.push(it); bytes += size;
+  }
+  await flush();
+}
+
 // ---------- agent runs (Jcode, as the prompter's sandbox user) ----------
 
 // Every agent and login runs through the root launcher as the account's own
@@ -254,6 +313,9 @@ async function runOne(run, job) {
   args.push(prompt);
   const child = jcodeAs(job.sandboxKey, dir, args, job.effort, job.autoPoke);
   active.set(run._id, child);
+  // Snapshot the folder so we can show (and undo) exactly what this run changed.
+  let before = null;
+  try { before = readTree(dir); } catch {}
   // Stream the agent's browser to everyone watching.
   const frames = setInterval(() => pushFrame(run.workspaceId, run.author), 700);
 
@@ -325,6 +387,7 @@ async function runOne(run, job) {
   }
   await chain;
   await safeSync(run.workspaceId);
+  if (before) await recordChanges(run, dir, before).catch((e) => log("changes error", e.message));
   // Save the conversation back as the pane's shared memory (also after a stop/steer).
   if (tr.sessionId && /^session_[a-z0-9_]+$/.test(tr.sessionId)) {
     await sandboxCmd([job.sandboxKey, dir, "--take-session", paneKey, tr.sessionId]);

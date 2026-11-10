@@ -1,13 +1,14 @@
 import { renderMarkdown, tidyPaths } from "./markdown";
 import { PeakMark } from "./art";
 import { RunChanges } from "./Changes";
-import { Editor } from "./Editor";
+// The editor (CodeMirror) is big; load it only when a file is opened.
+const Editor = lazy(() => import("./Editor").then((m) => ({ default: m.Editor })));
 import { ViewCtx, goJoin, useView } from "./view";
 import { SidePanel } from "./SidePanel";
 import { PublicPage } from "./Publish";
 import Privacy from "./Privacy";
 import { Palette, type Command } from "./Palette";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "../convex/_generated/api";
@@ -636,7 +637,9 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
       )}
       <main>
         {openFile ? (
-          <Editor key={openFile} workspaceId={id} path={openFile} onClose={() => setOpenFile(null)} />
+          <Suspense fallback={<div className="loading"><span className="spin" aria-hidden="true" /> Opening…</div>}>
+            <Editor key={openFile} workspaceId={id} path={openFile} onClose={() => setOpenFile(null)} />
+          </Suspense>
         ) : (
           <>
             <BrowserView workspaceId={id} live={!!busy} />

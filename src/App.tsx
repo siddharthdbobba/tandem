@@ -365,27 +365,13 @@ function Settings() {
         <p className="home__sub">Saved to your account, so it follows you to any device. Signed in as {me.email}.</p>
 
         <section>
-          <h3>Profile</h3>
-          <label>Display name</label>
-          <div className="row">
-            <input value={name ?? p.name} onChange={(e) => setName(e.target.value)} maxLength={40} />
-            <button disabled={name === null || name === p.name}
-              onClick={async () => { await update({ name: name! }); setName(null); flash("Name saved"); }}>Save</button>
-          </div>
-          <label>Color</label>
-          <div className="row swatches">
-            {COLORS.map((c) => (
-              <button key={c} className={`swatch ${p.color === c ? "on" : ""}`} style={{ background: c }}
-                aria-label={c} onClick={() => update({ color: c })} />
-            ))}
-          </div>
-        </section>
-
-        <section>
-          <h3>AI subscription</h3>
+          <h3>Your AI</h3>
+          {me.connections.some((c) => c.status === "connected") && !flow && (
+            <p className="ok-banner">✓ You're connected. <a className="textlink" href="#/">Back to your workspaces →</a></p>
+          )}
           <p className="dim">
-            Prompts you send run on <b>your</b> subscription through Jcode, in a sandbox only your account can read.
-            Nobody else's prompts ever use it.
+            Connect the Claude or ChatGPT plan you already pay for. Your prompts run on it, from a private
+            sandbox only your account can read. Friends' prompts never use your plan. <a className="textlink" href="#/privacy">How this works</a>
           </p>
           {PROVIDERS.map((pr) => {
             const st = status(pr.id);
@@ -442,7 +428,7 @@ function Settings() {
             onChange={(e) => update({ model: e.target.value || null }).then(() => flash("Model saved"))}>
             <option value="">Default for your subscription</option>
             {[...MODELS[p.provider as ProviderId], ...(p.model && !MODELS[p.provider as ProviderId].includes(p.model) ? [p.model] : [])]
-              .map((m) => <option key={m} value={m}>{m}</option>)}
+              .map((m) => <option key={m} value={m}>{modelLabel(m)}</option>)}
           </select>
           <label className="toggle">
             <input type="checkbox" checked={!!p.autoPoke}
@@ -452,6 +438,23 @@ function Settings() {
               <span className="dim">If the agent stops with its plan unfinished, nudge it to keep going (up to 3 times). Finishes more long tasks, but uses more of your subscription.</span>
             </span>
           </label>
+        </section>
+
+        <section>
+          <h3>Profile</h3>
+          <label>Display name</label>
+          <div className="row">
+            <input value={name ?? p.name} onChange={(e) => setName(e.target.value)} maxLength={40} />
+            <button disabled={name === null || name === p.name}
+              onClick={async () => { await update({ name: name! }); setName(null); flash("Name saved"); }}>Save</button>
+          </div>
+          <label>Color</label>
+          <div className="row swatches">
+            {COLORS.map((c) => (
+              <button key={c} className={`swatch ${p.color === c ? "on" : ""}`} style={{ background: c }}
+                aria-label={c} onClick={() => update({ color: c })} />
+            ))}
+          </div>
         </section>
         {saved && <p className="ok" role="status">{saved}</p>}
       </main>

@@ -79,3 +79,4 @@ aside.side { border-right: 0; background: var(--color-paper); overflow: hidden; 
 .poll__count { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-muted); }
 .pane-title { cursor: text; }
 .pane-title-input { height: 28px; font-weight: 600; width: 220px; }
+.ok-banner { background: var(--color-ok-soft); color: var(--color-ok-ink); border-radius: var(--radius-sm); padding: 8px 12px; font-size: var(--text-sm); margin: 4px 0 8px; }

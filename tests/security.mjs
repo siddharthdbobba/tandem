@@ -24,6 +24,8 @@ const tries = [
   ["stranger rename", () => stranger.mutation(api.workspaces.rename, { workspaceId: ws, name: "pwned" })],
   ["stranger leave", () => stranger.mutation(api.workspaces.leave, { workspaceId: ws })],
   ["stranger remove", () => stranger.mutation(api.workspaces.remove, { workspaceId: ws })],
+  ["stranger duplicate", () => stranger.mutation(api.workspaces.duplicate, { workspaceId: ws })],
+  ["anon duplicate", () => anon.mutation(api.workspaces.duplicate, { workspaceId: ws })],
 ];
 let bad = 0;
 for (const [name, fn] of tries) {
@@ -34,5 +36,14 @@ const open = await anon.query(api.worker.lastSeen, {});
 console.log("public worker.lastSeen ->", typeof open);
 const p = await anon.query(api.workspaces.peek, { code: (await owner.query(api.workspaces.get, { id: ws })).inviteCode });
 console.log("peek keys:", Object.keys(p).join(","), "people:", JSON.stringify(p.people));
+// Owner duplicates: new workspace with the template's text files, only the owner as member.
+const dup = await owner.mutation(api.workspaces.duplicate, { workspaceId: ws });
+const srcFiles = (await owner.query(api.files.tree, { workspaceId: ws })).map((f) => f.path).sort().join(",");
+const dupFiles = (await owner.query(api.files.tree, { workspaceId: dup.id })).map((f) => f.path).sort().join(",");
+const dupWs = await owner.query(api.workspaces.get, { id: dup.id });
+const dupChat = await owner.query(api.chat.list, { workspaceId: dup.id });
+const dupOk = dupFiles === srcFiles && dupWs.name === "sec (copy)" && dupChat.length === 0;
+console.log(`duplicate: files match=${dupFiles === srcFiles} name=${dupWs.name} chat=${dupChat.length}`);
+if (!dupOk) bad++;
 console.log(bad ? `FAIL ${bad} allowed` : "ALL DENIED");
 process.exit(bad ? 1 : 0);

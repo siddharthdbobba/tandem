@@ -414,6 +414,7 @@ function RowMenu({ w }: { w: { _id: Id<"workspaces">; name: string; mine: boolea
   const rename = useMutation(api.workspaces.rename);
   const leave = useMutation(api.workspaces.leave);
   const remove = useMutation(api.workspaces.remove);
+  const duplicate = useMutation(api.workspaces.duplicate);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -440,6 +441,11 @@ function RowMenu({ w }: { w: { _id: Id<"workspaces">; name: string; mine: boolea
             await navigator.clipboard.writeText(`${location.origin}${location.pathname}#/join/${w.inviteCode}`);
             setNote("Link copied"); setTimeout(() => setNote(""), 1500);
           })}>Copy invite link</button>
+          <button className="ghost" role="menuitem" onClick={() => act(async () => {
+            const { id, skipped } = await duplicate({ workspaceId: w._id });
+            setNote(skipped ? `Copied (${skipped} image/PDF file${skipped === 1 ? "" : "s"} not copied)` : "Copied");
+            setTimeout(() => { location.hash = `/w/${id}`; }, skipped ? 1800 : 400);
+          })}>Duplicate</button>
           {w.mine ? (
             <button className="ghost rowmenu__danger" role="menuitem" onClick={() => act(async () => {
               if (confirm(`Delete "${w.name}" for everyone? Files and chat are removed.`)) await remove({ workspaceId: w._id });

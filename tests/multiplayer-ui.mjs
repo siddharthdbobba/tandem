@@ -357,7 +357,7 @@ try {
     await until(async () => await B.js("!!document.querySelector('.rowmenu__btn')"), 15000, "bob home rows");
     await B.js(`[...document.querySelectorAll('.wslist > li')].find(li=>li.textContent.includes('multiplayer-ui')).querySelector('.rowmenu__btn').click(), true`);
     const items = await B.js("[...document.querySelectorAll('.rowmenu__list button')].map(b=>b.textContent).join('|')");
-    assert.equal(items, "Rename|Copy invite link|Leave");
+    assert.equal(items, "Rename|Copy invite link|Duplicate|Leave");
     await B.js("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })), true");
     await A.send("Page.navigate", { url: `${UI}/#/` });
     await until(async () => await A.js("!!document.querySelector('.rowmenu__btn')"), 15000, "alice home rows");

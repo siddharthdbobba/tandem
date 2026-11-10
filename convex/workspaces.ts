@@ -437,3 +437,30 @@ export const renamePane = mutation({
     await ctx.db.patch(paneId, { title });
   },
 });
+
+// Copy a workspace as a fresh starting point: text files, AI instructions and icon.
+// No chat, history or members come along. Binary files (images, PDFs) are skipped
+// so two workspaces never share one stored blob.
+export const duplicate = mutation({
+  args: { workspaceId: v.id("workspaces") },
+  handler: async (ctx, { workspaceId }) => {
+    const userId = await requireMember(ctx, workspaceId);
+    const profile = await ensureProfile(ctx, userId);
+    const src = await ctx.db.get(workspaceId);
+    if (!src) throw new Error("workspace not found");
+    const id = await ctx.db.insert("workspaces", {
+      name: `${src.name} (copy)`.slice(0, 60), ownerId: userId, inviteCode: randomCode(12),
+      template: src.template, emoji: src.emoji, instructions: src.instructions,
+    });
+    await ctx.db.insert("members", { workspaceId: id, userId });
+    await ctx.db.insert("panes", { workspaceId: id, title: "Main" });
+    const files = await ctx.db.query("files").withIndex("by_workspace_path", (q) => q.eq("workspaceId", workspaceId)).take(500);
+    let skipped = 0;
+    for (const f of files) {
+      if (f.blob) { skipped++; continue; }
+      const c = await ctx.db.query("contents").withIndex("by_file", (q) => q.eq("fileId", f._id)).unique();
+      await writeFile(ctx, id, f.path, c?.content ?? "", profile.name, true);
+    }
+    return { id, skipped };
+  },
+});

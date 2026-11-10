@@ -283,7 +283,9 @@ try {
     await B.js("document.querySelector('.chat__log [aria-label=\"Reply to alice\"]').click(), true");
     assert.equal(await B.js("document.querySelector('.chat__box textarea').value"), "> **alice:** who's bringing the stove?\n\n@alice ");
     await B.js(typeInto("document.querySelector('.chat__box textarea')", "> **alice:** who's bringing the stove?\n\n@alice I've got it"));
+    await until(async () => /bob is typing/.test(await A.js("document.querySelector('.typing')?.textContent ?? ''")), 8000, "alice sees bob typing");
     await B.js("document.querySelector('.chat__box').requestSubmit(), true");
+    await until(async () => !(await A.js("!!document.querySelector('.typing')")), 8000, "typing clears on send");
     await until(async () => await A.js("!!document.querySelector('.chat__log .mentions-me blockquote')"), 8000, "alice sees reply with quote");
     await B.js("[...document.querySelectorAll('.side__tabs button')].find(b=>b.textContent==='Workspace').click(), true");
     await until(async () => /alice/.test(await B.js("document.querySelector('.members')?.innerText ?? ''")), 8000, "members list");

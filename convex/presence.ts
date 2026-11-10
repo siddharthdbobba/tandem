@@ -34,3 +34,38 @@ export const list = query({
     return out;
   },
 });
+
+// Team chat "typing" signal. The client sends it at most every few seconds while
+// typing, and with typing=false when the box is cleared or the message is sent.
+export const setTyping = mutation({
+  args: { workspaceId: v.id("workspaces"), typing: v.boolean() },
+  handler: async (ctx, { workspaceId, typing }) => {
+    const userId = await requireMember(ctx, workspaceId);
+    const row = await ctx.db
+      .query("presence")
+      .withIndex("by_workspace_user", (q) => q.eq("workspaceId", workspaceId).eq("userId", userId))
+      .unique();
+    const typingAt = typing ? Date.now() : 0;
+    if (row) await ctx.db.patch(row._id, { typingAt });
+    else if (typing) await ctx.db.insert("presence", { workspaceId, userId, lastSeen: Date.now(), typingAt });
+  },
+});
+
+// Who's typing in chat (the client hides entries older than a few seconds).
+export const typing = query({
+  args: { workspaceId: v.id("workspaces"), code: v.optional(v.string()) },
+  handler: async (ctx, { workspaceId, code }) => {
+    await requireReader(ctx, workspaceId, code);
+    const rows = await ctx.db
+      .query("presence")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
+      .collect();
+    const out = [];
+    for (const r of rows) {
+      if (!r.typingAt) continue;
+      const p = await getProfile(ctx, r.userId);
+      out.push({ userId: r.userId, name: (p?.name ?? "?").split(" ")[0], at: r.typingAt });
+    }
+    return out;
+  },
+});

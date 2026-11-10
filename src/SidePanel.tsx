@@ -51,6 +51,24 @@ function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
   const vote = useMutation(api.chat.vote);
   const react = useMutation(api.chat.react);
   const me = useQuery(api.profile.me);
+  // Typing indicator: ping at most every 3s while typing; others hide pings older than 6s.
+  const setTyping = useMutation(api.presence.setTyping);
+  const typers = useQuery(api.presence.typing, { workspaceId, code });
+  const lastPing = useRef(0);
+  const [tick, setTick] = useState(Date.now());
+  useEffect(() => { const t = setInterval(() => setTick(Date.now()), 2000); return () => clearInterval(t); }, []);
+  // Track when each ping arrived on THIS device's clock, so server/client clock skew doesn't matter.
+  const seenAt = useRef(new Map<string, { at: number; local: number }>());
+  for (const t of typers ?? []) {
+    const prev = seenAt.current.get(t.userId);
+    if (!prev || prev.at !== t.at) seenAt.current.set(t.userId, { at: t.at, local: Date.now() });
+  }
+  const typingNames = (typers ?? []).filter((t) => t.userId !== me?.userId && tick - (seenAt.current.get(t.userId)?.local ?? 0) < 6000).map((t) => t.name);
+  const onType = (v: string) => {
+    if (readOnly) return;
+    if (!v.trim()) { if (lastPing.current) { lastPing.current = 0; setTyping({ workspaceId, typing: false }).catch(() => {}); } return; }
+    if (Date.now() - lastPing.current > 3000) { lastPing.current = Date.now(); setTyping({ workspaceId, typing: true }).catch(() => {}); }
+  };
   const [text, setText] = useState("");
   const [err, setErr] = useState("");
   const end = useRef<HTMLDivElement>(null);
@@ -138,6 +156,10 @@ function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
             </div>
           );
         })}
+        {typingNames.length > 0 && (
+          <p className="typing" aria-live="polite"><span className="typing__dots" aria-hidden="true"><i /><i /><i /></span>
+            {typingNames.length === 1 ? `${typingNames[0]} is typing` : typingNames.length === 2 ? `${typingNames[0]} and ${typingNames[1]} are typing` : "Several people are typing"}</p>
+        )}
         <div ref={end} />
       </div>
       {readOnly ? (
@@ -149,6 +171,7 @@ function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
           const t = text;
           setText("");
           setErr("");
+          lastPing.current = 0; setTyping({ workspaceId, typing: false }).catch(() => {});
           try { await send({ workspaceId, text: t }); } catch (x) { setText(t); setErr(String((x as Error).message).split("\n")[0].replace(/^.*Error: /, "")); }
         }}>
           {suggest.length > 0 && (
@@ -160,7 +183,7 @@ function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
             </div>
           )}
           <textarea ref={box} rows={1} value={text} placeholder="Message the group, or @ai…" aria-label="Message the group"
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => { setText(e.target.value); onType(e.target.value); }}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
           <button disabled={!text.trim()} aria-label="Send message">↑</button>
           {err && <p className="err chat__err">{err}</p>}

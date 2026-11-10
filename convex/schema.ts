@@ -197,6 +197,7 @@ export default defineSchema({
     userId: v.id("users"),
     paneId: v.optional(v.id("panes")),
     lastSeen: v.number(),
+    typingAt: v.optional(v.number()), // last keystroke in team chat (0 = stopped)
   })
     .index("by_workspace", ["workspaceId"])
     .index("by_workspace_user", ["workspaceId", "userId"]),

@@ -292,3 +292,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="tab"]:focus-v
 .emoji-pick { width: 36px; height: 36px; padding: 0; font-size: 20px; line-height: 1; border-radius: 9px; border: 1px solid transparent; }
 .emoji-pick.on { border-color: var(--color-accent); background: var(--color-accent-soft); }
 .ws-emoji { margin-right: 6px; font-size: 0.95em; }
+
+/* Finished runs: steps folded under one line */
+.steps-group { margin: 2px 0; }
+.steps-group > summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 999px; font-size: var(--text-xs); color: var(--color-muted); border: 1px solid var(--color-rule); background: var(--color-paper); }
+.steps-group > summary::-webkit-details-marker { display: none; }
+.steps-group > summary::before { content: "▸"; font-size: 10px; transition: transform var(--dur-fast) var(--ease-out); }
+.steps-group[open] > summary::before { transform: rotate(90deg); }
+.steps-group > summary:hover { color: var(--color-ink); border-color: var(--color-muted); }
+.steps-group[open] { display: flex; flex-direction: column; gap: 2px; }
+.steps-group[open] > summary { align-self: flex-start; margin-bottom: 4px; }

@@ -242,6 +242,35 @@ function AppBar({ children }: { children?: React.ReactNode }) {
   );
 }
 
+// A finished run's low-level steps (commands, file writes, page visits) fold into one
+// "Edited 2 files, ran 3 commands" line so the AI's actual answer stands out. While
+// the run is live everything stays visible so people can watch it work.
+type Ev = { _id: string; kind: string; text: string };
+const STEP_KINDS = new Set(["command", "file", "browse", "tool"]);
+function groupSteps<E extends Ev>(events: E[], live: boolean): (E | { steps: E[] })[] {
+  if (live) return events;
+  const out: (E | { steps: E[] })[] = [];
+  for (const e of events) {
+    const last = out[out.length - 1];
+    if (!STEP_KINDS.has(e.kind)) out.push(e);
+    else if (last && "steps" in last) last.steps.push(e);
+    else out.push({ steps: [e] });
+  }
+  // A lone step isn't worth a fold.
+  return out.flatMap((x) => ("steps" in x && x.steps.length < 2 ? x.steps : [x]));
+}
+function stepSummary(steps: Ev[]) {
+  const files = steps.filter((s) => s.kind === "file").length;
+  const pages = steps.filter((s) => s.kind === "browse").length;
+  const other = steps.length - files - pages;
+  const parts = [
+    files && `${files === 1 ? "edited a file" : `edited ${files} files`}`,
+    pages && `${pages === 1 ? "visited a page" : `${pages} browser steps`}`,
+    other && `${other === 1 ? "ran a command" : `ran ${other} commands`}`,
+  ].filter(Boolean);
+  return parts.join(", ").replace(/^./, (c) => c.toUpperCase());
+}
+
 // "5m ago", "3h ago", "2d ago".
 const ago = (t: number) => {
   const m = Math.round((Date.now() - t) / 60000);
@@ -911,10 +940,15 @@ function Pane({
                 </span>
               )}
             </div>
-            {r.events.map((e, i) =>
-              e.kind === "todo" ? (
+            {groupSteps(r.events, r.status === "running").map((e, i) =>
+              "steps" in e ? (
+                <details key={`g${i}`} className="steps-group">
+                  <summary>{stepSummary(e.steps)}</summary>
+                  {e.steps.map((s) => <pre key={s._id} className={`ev ${s.kind}`}>{tidyPaths(s.text)}</pre>)}
+                </details>
+              ) : e.kind === "todo" ? (
                 // Only the newest todo snapshot of a run is shown.
-                r.events.slice(i + 1).some((x) => x.kind === "todo") ? null : <TodoCard key={e._id} text={e.text} live={r.status === "running"} />
+                [...r.events].reverse().find((x) => x.kind === "todo")?._id !== e._id ? null : <TodoCard key={e._id} text={e.text} live={r.status === "running"} />
               ) : e.kind === "message" ? (
                 <div key={e._id} className="ev message md" dangerouslySetInnerHTML={{ __html: renderMarkdown(e.text) }} />
               ) : e.kind === "error" && /subscription isn't connected/.test(e.text) ? (

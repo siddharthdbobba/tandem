@@ -43,10 +43,15 @@ export const deleteTestData = internalMutation({
       for (const f of await ctx.db.query("files").withIndex("by_workspace_path", (q) => q.eq("workspaceId", w._id)).collect()) {
         const c = await ctx.db.query("contents").withIndex("by_file", (q) => q.eq("fileId", f._id)).unique();
         if (c) await del("contents", c._id);
+        if (f.blob && !dryRun) await ctx.storage.delete(f.blob);
         await del("files", f._id); budget -= 2;
       }
       for (const m of await ctx.db.query("members").withIndex("by_workspace_user", (q) => q.eq("workspaceId", w._id)).collect()) { await del("members", m._id); budget--; }
       for (const pr of await ctx.db.query("presence").withIndex("by_workspace", (q) => q.eq("workspaceId", w._id)).collect()) { await del("presence", pr._id); budget--; }
+      for (const fr of await ctx.db.query("browserFrames").withIndex("by_workspace", (q) => q.eq("workspaceId", w._id)).collect()) {
+        if (!dryRun) await ctx.storage.delete(fr.image);
+        await del("browserFrames", fr._id); budget--;
+      }
       await del("workspaces", w._id); budget--;
     }
     if (workspaces.length && !dryRun) return { done: false, counts };
@@ -134,9 +139,17 @@ export const scratchWorkspace = internalMutation({
 export const dropWorkspace = internalMutation({
   args: { workspaceId: v.id("workspaces") },
   handler: async (ctx, { workspaceId }) => {
-    for (const t of ["members", "panes", "files", "presence"] as const) {
+    for (const t of ["members", "panes", "files", "presence", "browserFrames"] as const) {
       const rows = await ctx.db.query(t as any).filter((q: any) => q.eq(q.field("workspaceId"), workspaceId)).collect();
-      for (const r of rows) await ctx.db.delete(r._id);
+      for (const r of rows as any[]) {
+        if (r.blob) await ctx.storage.delete(r.blob);
+        if (r.image) await ctx.storage.delete(r.image);
+        if (t === "files") {
+          const c = await ctx.db.query("contents").withIndex("by_file", (q) => q.eq("fileId", r._id)).unique();
+          if (c) await ctx.db.delete(c._id);
+        }
+        await ctx.db.delete(r._id);
+      }
     }
     const runs = await ctx.db.query("runs").filter((q) => q.eq(q.field("workspaceId"), workspaceId)).collect();
     for (const r of runs) {

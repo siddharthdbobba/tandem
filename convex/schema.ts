@@ -112,6 +112,7 @@ export default defineSchema({
       v.literal("file"),
       v.literal("error"),
       v.literal("todo"), // JSON array of the agent's todo list
+      v.literal("browse"), // one browser action (the live view shows the page)
     ),
     text: v.string(),
   }).index("by_pane", ["paneId"]),
@@ -124,6 +125,10 @@ export default defineSchema({
     size: v.number(),
     updatedBy: v.string(),
     pendingWrite: v.boolean(), // edited in browser, worker must write to disk
+    // Binary files (images, PDFs...) live in Convex file storage instead of `contents`.
+    blob: v.optional(v.id("_storage")),
+    hash: v.optional(v.string()), // sha256 of the bytes, to skip unchanged uploads
+    mime: v.optional(v.string()),
   })
     .index("by_workspace_path", ["workspaceId", "path"])
     .index("by_pending", ["pendingWrite"]),
@@ -143,4 +148,14 @@ export default defineSchema({
   })
     .index("by_workspace", ["workspaceId"])
     .index("by_workspace_user", ["workspaceId", "userId"]),
+
+  // The latest frame of each agent's browser, per workspace, so everyone can watch.
+  browserFrames: defineTable({
+    workspaceId: v.id("workspaces"),
+    image: v.id("_storage"),
+    url: v.string(),
+    title: v.string(),
+    by: v.string(), // whose agent is browsing
+    at: v.number(),
+  }).index("by_workspace", ["workspaceId"]),
 });

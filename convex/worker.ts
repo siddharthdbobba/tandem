@@ -3,6 +3,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { deleteFile, findFile, getProfile, readContent, writeFile } from "./lib";
+import { toHex } from "./files";
 import { provider } from "./schema";
 
 function check(secret: string) {
@@ -83,6 +84,7 @@ export const appendEvent = mutation({
       v.literal("file"),
       v.literal("error"),
       v.literal("todo"),
+      v.literal("browse"),
     ),
     text: v.string(),
   },
@@ -263,6 +265,83 @@ export const filePaths = query({
   },
 });
 
+// ---------- binary files + browser frames (Convex file storage) ----------
+
+export const uploadUrl = mutation({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    check(secret);
+    return ctx.storage.generateUploadUrl();
+  },
+});
+
+// Hashes of binary files we already have, so the worker only uploads changes.
+export const binaryHashes = query({
+  args: { secret: v.string(), workspaceId: v.id("workspaces") },
+  handler: async (ctx, { secret, workspaceId }) => {
+    check(secret);
+    const files = await ctx.db
+      .query("files")
+      .withIndex("by_workspace_path", (q) => q.eq("workspaceId", workspaceId))
+      .collect();
+    return files.filter((f) => f.blob).map((f) => ({ path: f.path, hash: f.hash ?? "" }));
+  },
+});
+
+// Disk -> Convex for one binary file that was just uploaded to storage.
+export const putBinary = mutation({
+  args: {
+    secret: v.string(),
+    workspaceId: v.id("workspaces"),
+    path: v.string(),
+    blob: v.id("_storage"),
+    mime: v.string(),
+  },
+  handler: async (ctx, { secret, workspaceId, path, blob, mime }) => {
+    check(secret);
+    const meta = await ctx.db.system.get(blob);
+    if (!meta) return;
+    const hash = toHex(meta.sha256);
+    const size = meta.size;
+    const existing = await findFile(ctx, workspaceId, path);
+    if (existing?.pendingWrite || existing?.hash === hash) {
+      await ctx.storage.delete(blob);
+      return;
+    }
+    if (existing) {
+      if (existing.blob) await ctx.storage.delete(existing.blob);
+      const row = await ctx.db.query("contents").withIndex("by_file", (q) => q.eq("fileId", existing._id)).unique();
+      if (row) await ctx.db.delete(row._id);
+      await ctx.db.patch(existing._id, { blob, hash, size, mime, updatedBy: "agent" });
+    } else {
+      await ctx.db.insert("files", { workspaceId, path, size, updatedBy: "agent", pendingWrite: false, blob, hash, mime });
+    }
+  },
+});
+
+// Latest browser frame for a workspace (one row per workspace, replaced each time).
+export const putFrame = mutation({
+  args: {
+    secret: v.string(),
+    workspaceId: v.id("workspaces"),
+    image: v.id("_storage"),
+    url: v.string(),
+    title: v.string(),
+    by: v.string(),
+  },
+  handler: async (ctx, { secret, workspaceId, image, url, title, by }) => {
+    check(secret);
+    const old = await ctx.db.query("browserFrames").withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId)).unique();
+    const row = { workspaceId, image, url: url.slice(0, 2000), title: title.slice(0, 300), by, at: Date.now() };
+    if (old) {
+      await ctx.storage.delete(old.image);
+      await ctx.db.patch(old._id, row);
+    } else {
+      await ctx.db.insert("browserFrames", row);
+    }
+  },
+});
+
 // Convex -> disk. Returns pending files with their content.
 export const pendingWrites = query({
   args: { secret: v.string() },
@@ -273,7 +352,11 @@ export const pendingWrites = query({
       .withIndex("by_pending", (q) => q.eq("pendingWrite", true))
       .take(20);
     return Promise.all(
-      files.map(async (f) => ({ ...f, content: await readContent(ctx, f._id) })),
+      files.map(async (f) => ({
+        ...f,
+        content: f.blob ? "" : await readContent(ctx, f._id),
+        blobUrl: f.blob ? await ctx.storage.getUrl(f.blob) : null,
+      })),
     );
   },
 });
@@ -284,7 +367,7 @@ export const markWritten = mutation({
     check(secret);
     const f = await ctx.db.get(fileId);
     // Only clear if nobody edited again since we wrote it.
-    if (f && (await readContent(ctx, fileId)) === content) {
+    if (f && (f.blob ? f.hash === content : (await readContent(ctx, fileId)) === content)) {
       await ctx.db.patch(fileId, { pendingWrite: false });
     }
   },

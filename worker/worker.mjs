@@ -5,6 +5,7 @@
 import { ConvexClient } from "convex/browser";
 import { anyApi } from "convex/server";
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { AUTH_ERR, clip, translator } from "./events.mjs";
@@ -34,6 +35,19 @@ const dirFor = (workspaceId) => {
 
 // ---------- file sync: disk -> Convex ----------
 
+// Binary files (images, PDFs...) sync through Convex file storage, up to this size.
+const MAX_BINARY = 20_000_000;
+const MIME = {
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp",
+  svg: "image/svg+xml", ico: "image/x-icon", pdf: "application/pdf", zip: "application/zip",
+  mp4: "video/mp4", webm: "video/webm", mp3: "audio/mpeg", wav: "audio/wav",
+  woff: "font/woff", woff2: "font/woff2", ttf: "font/ttf",
+};
+const mimeOf = (p) => MIME[path.extname(p).slice(1).toLowerCase()] ?? "application/octet-stream";
+const sha = (buf) => crypto.createHash("sha256").update(buf).digest("hex");
+// A snapshot value for a binary file: its hash, so changes are detected cheaply.
+const BIN = "\u0000sha256:";
+
 function readTree(dir) {
   const out = new Map();
   const walk = (abs, rel) => {
@@ -42,15 +56,54 @@ function readTree(dir) {
         if (!SKIP_DIRS.has(ent.name)) walk(path.join(abs, ent.name), path.join(rel, ent.name));
       } else if (ent.isFile()) {
         const p = path.join(abs, ent.name);
-        if (fs.statSync(p).size > MAX_FILE) continue;
+        const r = path.join(rel, ent.name);
+        if (r.startsWith(".tandem" + path.sep)) continue; // browser frames etc.: not files
+        const size = fs.statSync(p).size;
+        if (size > MAX_BINARY) continue;
         const buf = fs.readFileSync(p);
-        if (buf.includes(0)) continue; // binary
-        out.set(path.join(rel, ent.name), buf.toString("utf8"));
+        const text = size <= MAX_FILE && !buf.includes(0) && !/\.(pdf|png|jpe?g|gif|webp|ico|zip|mp[34]|wav|webm|woff2?|ttf)$/i.test(r);
+        out.set(r, text ? buf.toString("utf8") : BIN + sha(buf));
       }
     }
   };
   walk(dir, "");
   return out;
+}
+
+async function uploadBinary(workspaceId, rel) {
+  const abs = path.join(dirFor(workspaceId), rel);
+  const buf = fs.readFileSync(abs);
+  const storageId = await upload(buf, mimeOf(rel));
+  await client.mutation(api.worker.putBinary, { ...s, workspaceId, path: rel, blob: storageId, mime: mimeOf(rel) });
+}
+
+// Upload bytes to Convex storage over the local backend URL.
+async function upload(buf, type) {
+  const u = new globalThis.URL(await client.mutation(api.worker.uploadUrl, s));
+  const res = await fetch(URL.replace(/\/$/, "") + u.pathname + u.search, { method: "POST", headers: { "Content-Type": type }, body: buf });
+  if (!res.ok) throw new Error(`upload: ${res.status}`);
+  return (await res.json()).storageId;
+}
+
+// ---------- live browser view ----------
+
+// While an agent runs, push its browser's newest screenshot to Convex.
+const frameSeen = new Map(); // workspaceId -> live.json mtime
+async function pushFrame(workspaceId, by) {
+  const dir = path.join(dirFor(workspaceId), ".tandem", "browser");
+  try {
+    const metaPath = path.join(dir, "live.json");
+    const st = fs.statSync(metaPath);
+    if (frameSeen.get(workspaceId) === st.mtimeMs) return;
+    frameSeen.set(workspaceId, st.mtimeMs);
+    const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+    const img = fs.readFileSync(path.join(dir, "live.jpg"));
+    if (img.length > 5_000_000) return;
+    const image = await upload(img, "image/jpeg");
+    await client.mutation(api.worker.putFrame, {
+      ...s, workspaceId, image, url: String(meta.url ?? ""), title: String(meta.title ?? ""), by,
+    });
+  } catch {}
 }
 
 async function syncWorkspace(workspaceId) {
@@ -60,9 +113,16 @@ async function syncWorkspace(workspaceId) {
     // First sync after start: diff against what Convex has.
     const paths = await client.query(api.worker.filePaths, { ...s, workspaceId });
     prev = new Map(paths.map((p) => [p, null]));
+    for (const b of await client.query(api.worker.binaryHashes, { ...s, workspaceId })) prev.set(b.path, BIN + b.hash);
   }
   const upserts = [];
-  for (const [p, c] of now) if (prev.get(p) !== c) upserts.push({ path: p, content: c });
+  const binaries = [];
+  for (const [p, c] of now) {
+    if (prev.get(p) === c) continue;
+    if (c.startsWith(BIN)) binaries.push(p);
+    else upserts.push({ path: p, content: c });
+  }
+  for (const p of binaries) await uploadBinary(workspaceId, p);
   const deletes = [...prev.keys()].filter((p) => !now.has(p));
   // Batch by size so one mutation never carries more than ~2 MB.
   const batches = [[]];
@@ -115,6 +175,21 @@ client.onUpdate(api.worker.pendingWrites, s, async (files) => {
     const abs = path.join(dirFor(f.workspaceId), f.path);
     if (!abs.startsWith(dirFor(f.workspaceId) + path.sep)) continue;
     fs.mkdirSync(path.dirname(abs), { recursive: true });
+    if (f.blob) {
+      // Uploaded binary: fetch from storage and check the hash before writing.
+      try {
+        const local = new globalThis.URL(f.blobUrl);
+        const buf = Buffer.from(await (await fetch(URL.replace(/\/$/, "") + local.pathname + local.search)).arrayBuffer());
+        if (sha(buf) !== f.hash) throw new Error("hash mismatch");
+        fs.writeFileSync(abs, buf);
+        snapshots.get(f.workspaceId)?.set(f.path, BIN + f.hash);
+        await client.mutation(api.worker.markWritten, { ...s, fileId: f._id, content: f.hash });
+        log("wrote binary", f.workspaceId, f.path, "by", f.updatedBy);
+      } catch (e) {
+        log("binary write failed", f.path, e.message);
+      }
+      continue;
+    }
     fs.writeFileSync(abs, f.content);
     snapshots.get(f.workspaceId)?.set(f.path, f.content);
     await client.mutation(api.worker.markWritten, { ...s, fileId: f._id, content: f.content });
@@ -149,7 +224,8 @@ async function runOne(run, job) {
     `[Tandem shared workspace. Prompt from ${run.author}. Other people and agents may be ` +
     `editing files in this directory at the same time, so re-read files before editing them. ` +
     `Keep all work inside the current directory, and refer to files by paths relative to it ` +
-    `(never mention the absolute directory path). Format replies in Markdown.]\n\n` +
+    `(never mention the absolute directory path). Format replies in Markdown. You have a ` +
+    `private, logged-out web browser via the browser_* tools; people in the workspace can watch it live.]\n\n` +
     (run.steer
       ? `[${run.author} interrupted your previous turn to steer you. Your last tool call may not have ` +
         `finished; check before assuming it ran. Adjust course using this message:]\n\n`
@@ -162,7 +238,8 @@ async function runOne(run, job) {
       client.mutation(api.worker.appendEvent, { ...s, runId: run._id, kind, text }).catch(() => {}),
     ));
 
-  const args = ["run", "--ndjson", "--no-update", "--quiet", "-p", job.provider];
+  // Tandem's own browser (MCP, logged out, watched live) replaces Jcode's desktop-bridge browser.
+  const args = ["run", "--ndjson", "--no-update", "--quiet", "-p", job.provider, "--disabled-tools", "browser", "--mcp-tools", "eager"];
   if (job.model) args.push("-m", job.model);
 
   log("run", run._id, "as", job.sandboxKey, job.provider, job.model ?? "", job.effort ?? "");
@@ -175,6 +252,8 @@ async function runOne(run, job) {
   args.push(prompt);
   const child = jcodeAs(job.sandboxKey, dir, args, job.effort, job.autoPoke);
   active.set(run._id, child);
+  // Stream the agent's browser to everyone watching.
+  const frames = setInterval(() => pushFrame(run.workspaceId, run.author), 700);
 
   // Stop the agent if anyone hits cancel.
   let cancelled = false;
@@ -222,6 +301,8 @@ async function runOne(run, job) {
   child.stderr.on("data", (c) => (stderr = (stderr + c).slice(-2000)));
 
   const code = await new Promise((res) => child.on("close", res));
+  clearInterval(frames);
+  await pushFrame(run.workspaceId, run.author);
   const ok = code === 0 || capped;
   unsub();
   for (const e of tr.end()) emit(e.kind, e.text);

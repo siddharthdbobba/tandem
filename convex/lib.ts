@@ -105,6 +105,11 @@ export async function writeFile(
     return fileId;
   }
   await ctx.db.patch(existing._id, { size: content.length, updatedBy, pendingWrite });
+  // A file that was binary and is now text: drop the old blob.
+  if (existing.blob) {
+    await ctx.storage.delete(existing.blob);
+    await ctx.db.patch(existing._id, { blob: undefined, hash: undefined, mime: undefined });
+  }
   const row = await ctx.db
     .query("contents")
     .withIndex("by_file", (q) => q.eq("fileId", existing._id))
@@ -120,5 +125,7 @@ export async function deleteFile(ctx: MutationCtx, fileId: Id<"files">) {
     .withIndex("by_file", (q) => q.eq("fileId", fileId))
     .unique();
   if (row) await ctx.db.delete(row._id);
+  const f = await ctx.db.get(fileId);
+  if (f?.blob) await ctx.storage.delete(f.blob);
   await ctx.db.delete(fileId);
 }

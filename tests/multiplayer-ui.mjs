@@ -2,13 +2,17 @@
 // editing across users, and prompting through the actual UI.
 // Run: UI_URL=https://your-ui CONVEX_URL=https://backend node tests/multiplayer-ui.mjs
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, execFile as execFileCb } from "node:child_process";
+import { promisify } from "node:util";
 import fs from "node:fs";
 import path from "node:path";
 import { anyApi as api } from "convex/server";
 import { account, stamp } from "./helpers.mjs";
 
 const UI = process.env.UI_URL ?? "http://127.0.0.1:5173";
+// Shell on the VM that hosts the workspaces (to check bytes landed on disk).
+const VM = process.env.WORKER_HOST ?? "localhost";
+const sh = async (cmd) => (await promisify(execFileCb)("ssh", [VM, cmd], { timeout: 30_000 })).stdout.trim();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
@@ -65,7 +69,7 @@ const carol = await account(`carol-${id}@test.dev`, "carol-pass-123", "carol");
 const wsId = await alice.mutation(api.workspaces.create, { name: "multiplayer-ui" });
 const { inviteCode } = await alice.query(api.workspaces.get, { id: wsId });
 await carol.mutation(api.workspaces.join, { inviteCode });
-await alice.mutation(api.files.save, { workspaceId: wsId, path: "shared.md", content: "v1" });
+await alice.mutation(api.files.save, { workspaceId: wsId, path: "shared.txt", content: "v1" });
 
 // Real sign-in through the UI form, then open the invite link.
 async function signInUI(b, [email, password]) {
@@ -91,25 +95,25 @@ try {
   });
 
   await test("file edit by alice shows live in bob's open editor", async () => {
-    const open = (b) => b.js("[...document.querySelectorAll('.file')].find(f=>f.textContent.startsWith('shared.md')).click(), true");
+    const open = (b) => b.js("[...document.querySelectorAll('.file')].find(f=>f.textContent.startsWith('shared.txt')).click(), true");
     await until(async () => (await B.js("!!document.querySelector('.file')")), 10000, "tree");
     await open(A); await open(B);
     await until(async () => (await B.js("document.querySelector('textarea.code')?.value")) === "v1", 10000, "bob sees v1");
     await A.js(typeInto("document.querySelector('textarea.code')", "v2 from alice"));
     await A.js("[...document.querySelectorAll('.editor button')].find(b=>b.textContent==='Save').click(), true");
     await until(async () => (await B.js("document.querySelector('textarea.code')?.value")) === "v2 from alice", 10000, "bob sees v2");
-    const f = await alice.query(api.files.get, { workspaceId: wsId, path: "shared.md" });
+    const f = await alice.query(api.files.get, { workspaceId: wsId, path: "shared.txt" });
     assert.equal(f.updatedBy, "alice");
     await A.js("[...document.querySelectorAll('.editor button')].find(b=>b.textContent.includes('panes')).click(), true");
     await B.js("[...document.querySelectorAll('.editor button')].find(b=>b.textContent.includes('panes')).click(), true");
   });
 
   await test("bob's unsaved draft is not clobbered by alice's save", async () => {
-    const open = (b) => b.js("[...document.querySelectorAll('.file')].find(f=>f.textContent.startsWith('shared.md')).click(), true");
+    const open = (b) => b.js("[...document.querySelectorAll('.file')].find(f=>f.textContent.startsWith('shared.txt')).click(), true");
     await open(A); await open(B);
     await sleep(1000);
     await B.js(typeInto("document.querySelector('textarea.code')", "bob draft"));
-    await carol.mutation(api.files.save, { workspaceId: wsId, path: "shared.md", content: "v3 from api" });
+    await carol.mutation(api.files.save, { workspaceId: wsId, path: "shared.txt", content: "v3 from api" });
     await sleep(2000);
     assert.equal(await B.js("document.querySelector('textarea.code').value"), "bob draft");
     assert.equal(await A.js("document.querySelector('textarea.code').value"), "v3 from api");
@@ -145,13 +149,13 @@ try {
       await C.send("Page.navigate", { url: `${UI}/#/join/${inviteCode}` });
       await until(async () => (await C.js("document.querySelector('.ws-name')?.textContent")) === "multiplayer-ui", 15000, "viewer sees workspace");
       await until(async () => /hello-from-ui/.test(await C.js("document.querySelector('.feed')?.innerText ?? ''")), 10000, "viewer sees others' prompts");
-      await until(async () => /shared\.md/.test(await C.js("document.querySelector('.tree').innerText")), 10000, "viewer sees files");
+      await until(async () => /shared\.txt/.test(await C.js("document.querySelector('.tree').innerText")), 10000, "viewer sees files");
       assert.equal(await C.js("!!document.querySelector('.prompt-box textarea')"), false, "no prompt box");
       assert.equal(await C.js("!!document.querySelector('.add-pane')"), false, "no add pane");
       assert.equal(await C.js("!!document.querySelector('.upload-btn')"), false, "no upload");
       assert.equal(await C.js("document.querySelector('.viewing-pill')?.textContent"), "View only");
       // Opening a file is read-only too.
-      await C.js("[...document.querySelectorAll('.file')].find(f=>f.textContent.startsWith('shared.md')).click(), true");
+      await C.js("[...document.querySelectorAll('.file')].find(f=>f.textContent.startsWith('shared.txt')).click(), true");
       await until(async () => await C.js("document.querySelector('textarea.code')?.readOnly === true"), 10000, "read-only editor");
       await C.js("[...document.querySelectorAll('.editor button')].find(b=>b.textContent.includes('panes')).click(), true");
       // Sign up from the viewer, then land in the workspace as a member.
@@ -170,18 +174,43 @@ try {
     }
   });
 
-  await test("uploading a file in alice's UI shows it in bob's tree; binary is refused", async () => {
+  await test("uploads: text stays editable; a PNG and a PDF go to storage, reach disk, and open in viewers", async () => {
+    // A real 1x1 PNG and a minimal valid PDF.
     await A.js(`(() => {
+      const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='), c => c.charCodeAt(0));
+      const pdf = '%PDF-1.1\\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj 3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\\ntrailer<</Root 1 0 R>>\\n%%EOF';
       const input = document.querySelector('.upload-btn input[type=file]');
       const dt = new DataTransfer();
       dt.items.add(new File(['uploaded by alice\\n'], 'upload-${id}.txt', { type: 'text/plain' }));
-      dt.items.add(new File([new Uint8Array([0x89, 0x50, 0, 1])], 'pic.png'));
+      dt.items.add(new File([png], 'pic-${id}.png', { type: 'image/png' }));
+      dt.items.add(new File([pdf], 'doc-${id}.pdf', { type: 'application/pdf' }));
+      dt.items.add(new File(['# Hello\\n\\n- one\\n- **two**\\n<script>window.__pwned=1</script>'], 'readme-${id}.md', { type: 'text/markdown' }));
       input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
-    await until(async () => (await B.js("document.querySelector('.tree').innerText")).includes(`upload-${id}.txt`), 15000, "bob sees upload");
-    const f = await bob.query(api.files.get, { workspaceId: wsId, path: `upload-${id}.txt` });
-    assert.equal(f.content, "uploaded by alice\n");
-    await until(async () => /pic\.png looks binary/.test(await A.js("document.querySelector('.tree').innerText")), 5000, "binary refused");
-    assert.equal(await bob.query(api.files.get, { workspaceId: wsId, path: "pic.png" }), null);
+    for (const n of [`upload-${id}.txt`, `pic-${id}.png`, `doc-${id}.pdf`, `readme-${id}.md`])
+      await until(async () => (await B.js("document.querySelector('.tree').innerText")).includes(n), 20000, `bob sees ${n}`);
+    assert.equal((await bob.query(api.files.get, { workspaceId: wsId, path: `upload-${id}.txt` })).content, "uploaded by alice\n");
+    const png = await bob.query(api.files.get, { workspaceId: wsId, path: `pic-${id}.png` });
+    assert.ok(png.blob && png.url && png.mime === "image/png", JSON.stringify({ mime: png.mime, url: !!png.url }));
+    // Worker writes the binary to the workspace disk with identical bytes.
+    await until(async () => !(await bob.query(api.files.get, { workspaceId: wsId, path: `pic-${id}.png` })).pendingWrite, 20000, "png on disk");
+    const disk = await sh(`sha256sum /srv/tandem/workspaces/${wsId}/pic-${id}.png | cut -c1-64`);
+    assert.equal(disk, png.hash);
+    // Bob opens each in the viewer.
+    const open = (n) => B.js(`[...document.querySelectorAll('.file')].find(f=>f.textContent.startsWith('${n}')).click(), true`);
+    const back = () => B.js("[...document.querySelectorAll('.editor button')].find(b=>b.textContent.includes('panes')).click(), true");
+    await open(`pic-${id}.png`);
+    await until(async () => await B.js("(() => { const i = document.querySelector('.viewer--media img'); return !!i && i.complete && i.naturalWidth === 1; })()"), 15000, "image renders");
+    await back();
+    await open(`doc-${id}.pdf`);
+    await until(async () => await B.js("!!document.querySelector('iframe.viewer--frame[src]')"), 15000, "pdf viewer");
+    await back();
+    await open(`readme-${id}.md`);
+    await until(async () => await B.js("document.querySelector('.viewer--doc h1')?.textContent === 'Hello'"), 15000, "markdown preview");
+    assert.equal(await B.js("!!document.querySelector('.viewer--doc strong')"), true);
+    assert.equal(await B.js("!!document.querySelector('.viewer--doc script') || !!window.__pwned"), false, "markdown is sanitized");
+    await B.js("[...document.querySelectorAll('.seg button')].find(b=>b.textContent==='Source').click(), true");
+    await until(async () => (await B.js("document.querySelector('textarea.code')?.value ?? ''")).startsWith("# Hello"), 5000, "source view");
+    await back();
   });
 
   await test("pane model picker: friendly names, unconnected disabled, effort selectable", async () => {

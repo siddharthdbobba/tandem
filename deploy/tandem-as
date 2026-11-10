@@ -108,6 +108,24 @@ case "$effort" in ""|low|medium|high|xhigh|max) ;; *) echo "bad effort" >&2; exi
 effort_env=()
 [ -n "$effort" ] && effort_env=(JCODE_ANTHROPIC_REASONING_EFFORT="$effort" JCODE_OPENAI_REASONING_EFFORT="$effort")
 
+# Give every agent its own clean browser: a fresh in-memory Chromium profile
+# (never anyone's login) launched over a pipe as this sandbox user, so the
+# nft rules still block private networks. Screenshots land in the workspace's
+# .tandem/browser folder, which is what the live Browser view shows.
+shot_dir="$top/.tandem/browser"
+as_user mkdir -p "$shot_dir" 2>/dev/null || true
+as_user bash -c 'umask 077; mkdir -p "$1/.jcode"; cat > "$1/.jcode/mcp.json.tmp" && mv -f "$1/.jcode/mcp.json.tmp" "$1/.jcode/mcp.json"' _ "$home" <<JSON
+{
+  "mcpServers": {
+    "browser": {
+      "command": "/opt/tandem-browser/bin/tandem-browser-mcp",
+      "args": ["$shot_dir"],
+      "env": { "PLAYWRIGHT_BROWSERS_PATH": "/opt/tandem-browser/browsers" }
+    }
+  }
+}
+JSON
+
 exec setpriv --reuid="$user" --regid=tandem --init-groups --inh-caps=-all \
   env -i HOME="$home" JCODE_HOME="$home/.jcode" USER="$user" LOGNAME="$user" \
   PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 JCODE_NO_TELEMETRY=1 JCODE_MEMORY_ENABLED=0 JCODE_RUN_AUTO_POKE=$poke \

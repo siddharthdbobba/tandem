@@ -61,6 +61,11 @@ export function translator(dir) {
         }
         if (t.name === "bash") {
           out.push({ kind: "command", text: `$ ${input.command ?? ""}\n${clip(outText.replace(/\n*--- Command finished with exit code: 0 ---\n*$/, "\n"))}`.trimEnd() });
+        } else if (t.name?.startsWith("mcp__browser__")) {
+          // Browser actions read like a short activity log; the live view shows the page.
+          const act = t.name.slice("mcp__browser__browser_".length).replace(/_/g, " ");
+          const what = input.url ?? input.element ?? input.text ?? input.key ?? "";
+          out.push({ kind: ev.error ? "error" : "browse", text: `browser ${act}${what ? ": " + String(what).slice(0, 200) : ""}${ev.error ? "\n" + clip(outText, 400) : ""}` });
         } else if (FILE_TOOLS.has(t.name)) {
           out.push({ kind: ev.error ? "error" : "file", text: `${t.name} ${rel(input.file_path)}`.trim() + (ev.error ? `\n${clip(outText, 800)}` : "") });
         } else {

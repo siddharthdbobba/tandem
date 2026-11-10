@@ -442,6 +442,7 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
   const me = useQuery(api.profile.me);
   const ws = useQuery(api.workspaces.get, { id, code });
   const panes = useQuery(api.workspaces.listPanes, { workspaceId: id, code });
+  const busy = useQuery(api.workspaces.busy, { workspaceId: id, code });
   const addPane = useMutation(api.workspaces.addPane);
   const heartbeat = useMutation(api.presence.heartbeat);
   const [now, setNow] = useState(Date.now());
@@ -523,6 +524,7 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
           <Editor key={openFile} workspaceId={id} path={openFile} onClose={() => setOpenFile(null)} />
         ) : (
           <>
+            <BrowserView workspaceId={id} live={!!busy} />
             <div className="panes">
               {panes?.map((p) => (
                 <Pane
@@ -551,6 +553,39 @@ function Workspace({ id }: { id: Id<"workspaces"> }) {
 }
 
 type PaneDoc = { _id: Id<"panes">; title: string };
+
+// Live view of the agent's browser. Everyone in the workspace sees the same
+// frames, including people watching through a share link.
+function BrowserView({ workspaceId, live }: { workspaceId: Id<"workspaces">; live: boolean }) {
+  const { code } = useView();
+  const frame = useQuery(api.files.browserFrame, { workspaceId, code });
+  const [open, setOpen] = useState(() => localStorage.getItem("tandem-browser") !== "0");
+  const [big, setBig] = useState(false);
+  if (!frame) return null;
+  const fresh = live && Date.now() - frame.at < 60_000;
+  const toggle = () => {
+    localStorage.setItem("tandem-browser", open ? "0" : "1");
+    setOpen(!open);
+  };
+  return (
+    <section className={`browser ${open ? "" : "browser--closed"} ${big ? "browser--big" : ""}`} aria-label="Agent browser">
+      <div className="browser__bar">
+        <span className="browser__dots" aria-hidden="true"><i /><i /><i /></span>
+        <span className="browser__url" title={frame.url}>{frame.url || "about:blank"}</span>
+        <span className={`browser__who ${fresh ? "live" : ""}`}>
+          {fresh ? <><span className="browser__pulse" aria-hidden="true" />{frame.by}'s agent is browsing</> : <>Last browsed by {frame.by}'s agent</>}
+        </span>
+        {open && <button className="ghost" onClick={() => setBig(!big)} title={big ? "Smaller" : "Bigger"}>{big ? "–" : "⤢"}</button>}
+        <button className="ghost" onClick={toggle} aria-expanded={open}>{open ? "Hide" : "Show browser"}</button>
+      </div>
+      {open && frame.image && (
+        <a href={frame.image} target="_blank" rel="noreferrer" className="browser__frame" title={frame.title}>
+          <img src={frame.image} alt={`Agent browser: ${frame.title || frame.url}`} />
+        </a>
+      )}
+    </section>
+  );
+}
 
 function Pane({
   pane,
@@ -818,20 +853,35 @@ function FileTree({
   const { code, readOnly } = useView();
   const files = useQuery(api.files.tree, { workspaceId, code });
   const save = useMutation(api.files.save);
+  const uploadUrl = useMutation(api.files.uploadUrl);
+  const saveBinary = useMutation(api.files.saveBinary);
   const [drag, setDrag] = useState(false);
   const [upErr, setUpErr] = useState("");
+  const [uploading, setUploading] = useState(0);
   const upload = async (list: FileList | null) => {
     setUpErr("");
     for (const f of Array.from(list ?? [])) {
-      // Text files only: the workspace mirror stores text, and the agent reads text.
-      if (f.size > 400_000) { setUpErr(`${f.name} is over 400 KB`); continue; }
-      const buf = new Uint8Array(await f.arrayBuffer());
-      if (buf.includes(0)) { setUpErr(`${f.name} looks binary; only text files for now`); continue; }
       const name = (f.webkitRelativePath || f.name).replace(/[^\w.\-/ ]/g, "_");
+      if (f.size > 20_000_000) { setUpErr(`${f.name} is over 20 MB`); continue; }
+      setUploading((n) => n + 1);
       try {
-        await save({ workspaceId, path: name, content: new TextDecoder().decode(buf) });
+        const buf = new Uint8Array(await f.arrayBuffer());
+        // Small text files go in as editable text; everything else (PDFs, images...) as a binary.
+        const looksText = f.size <= 400_000 && !buf.includes(0) && !/\.(pdf|png|jpe?g|gif|webp|ico|zip|mp[34]|wav|webm|woff2?|ttf|docx?|xlsx?|pptx?)$/i.test(name);
+        if (looksText) {
+          await save({ workspaceId, path: name, content: new TextDecoder().decode(buf) });
+        } else {
+          const res = await fetch(await uploadUrl({ workspaceId }), {
+            method: "POST", headers: { "Content-Type": f.type || "application/octet-stream" }, body: f,
+          });
+          if (!res.ok) throw new Error(`upload failed (${res.status})`);
+          const { storageId } = await res.json();
+          await saveBinary({ workspaceId, path: name, blob: storageId });
+        }
       } catch (e) {
-        setUpErr(`${f.name}: ${(e as Error).message}`);
+        setUpErr(`${f.name}: ${(e as Error).message.replace(/^.*Uncaught Error: /, "").split("\n")[0]}`);
+      } finally {
+        setUploading((n) => n - 1);
       }
     }
   };
@@ -844,7 +894,7 @@ function FileTree({
       <div className="tree-head">
         <strong>Files</strong>
         {!readOnly && <span>
-        <label className="ghost upload-btn" title="Upload text files (or drop them here)">
+        <label className="ghost upload-btn" title="Upload files: code, PDFs, images (or drop them here)">
           ↑ upload
           <input type="file" multiple hidden onChange={(e) => { upload(e.target.files); e.target.value = ""; }} />
         </label>
@@ -860,6 +910,7 @@ function FileTree({
         </span>}
       </div>
       {upErr && <p className="err tree__err">{upErr}</p>}
+      {uploading > 0 && <p className="dim tree__err"><span className="spin" /> Uploading {uploading}…</p>}
       {sorted.length === 0 && <p className="dim">Empty. Drop files here, or let the agent write some.</p>}
       {sorted.map((f) => {
         const depth = f.path.split("/").length - 1;
@@ -880,6 +931,18 @@ function FileTree({
   );
 }
 
+// What kind of viewer a file gets.
+const kindOf = (path: string, binary: boolean) => {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  if (ext === "pdf") return "pdf";
+  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "avif"].includes(ext)) return "image";
+  if (["mp4", "webm", "mov"].includes(ext)) return "video";
+  if (["mp3", "wav", "ogg", "m4a"].includes(ext)) return "audio";
+  if (["md", "markdown"].includes(ext)) return "markdown";
+  if (["html", "htm"].includes(ext)) return "html";
+  return binary ? "binary" : "text";
+};
+
 function Editor({
   workspaceId,
   path,
@@ -893,9 +956,14 @@ function Editor({
   const file = useQuery(api.files.get, { workspaceId, path, code });
   const save = useMutation(api.files.save);
   const [draft, setDraft] = useState<string | null>(null);
+  const kind = kindOf(path, !!file?.blob);
+  // Markdown and HTML open as a preview; the source is one click away.
+  const [mode, setMode] = useState<"preview" | "source">("preview");
   const dirty = draft !== null && draft !== file?.content;
   // If someone else changes the file while you have no local edits, you see it live.
   const value = draft ?? file?.content ?? "";
+  const previewable = kind === "markdown" || kind === "html";
+  const showSource = !file?.blob && (!previewable || mode === "source");
 
   return (
     <div className="editor">
@@ -906,7 +974,14 @@ function Editor({
         <strong>{path}</strong>
         <span className="dim">last change by {file?.updatedBy ?? "?"}</span>
         {file?.pendingWrite && <span className="dim">· syncing to disk</span>}
-        {readOnly ? (
+        {previewable && (
+          <div className="seg" role="tablist" aria-label="View">
+            <button role="tab" aria-selected={mode === "preview"} className={mode === "preview" ? "on" : ""} onClick={() => setMode("preview")}>Preview</button>
+            <button role="tab" aria-selected={mode === "source"} className={mode === "source" ? "on" : ""} onClick={() => setMode("source")}>Source</button>
+          </div>
+        )}
+        {file?.url && <a className="textlink" href={file.url} target="_blank" rel="noreferrer" download={path.split("/").pop()}>Download</a>}
+        {showSource && (readOnly ? (
           <span className="viewing-pill">Read only</span>
         ) : (
           <button
@@ -918,21 +993,45 @@ function Editor({
           >
             {dirty ? "Save" : "Saved"}
           </button>
-        )}
+        ))}
       </div>
-      <textarea
-        className="code"
-        spellCheck={false}
-        readOnly={readOnly}
-        value={value}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if ((e.metaKey || e.ctrlKey) && e.key === "s") {
-            e.preventDefault();
-            if (dirty) save({ workspaceId, path, content: draft! }).then(() => setDraft(null));
-          }
-        }}
-      />
+      {file === undefined ? (
+        <div className="viewer"><span className="spin" /></div>
+      ) : file === null ? (
+        <div className="viewer dim">This file was removed.</div>
+      ) : showSource ? (
+        <textarea
+          className="code"
+          spellCheck={false}
+          readOnly={readOnly}
+          value={value}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+              e.preventDefault();
+              if (dirty) save({ workspaceId, path, content: draft! }).then(() => setDraft(null));
+            }
+          }}
+        />
+      ) : kind === "markdown" ? (
+        <div className="viewer viewer--doc"><article className="md doc" dangerouslySetInnerHTML={{ __html: renderMarkdown(value) }} /></div>
+      ) : kind === "html" ? (
+        // Sandboxed: scripts run but can't reach Tandem's origin, cookies or storage.
+        <iframe className="viewer viewer--frame" title={path} sandbox="allow-scripts allow-forms allow-modals" srcDoc={value} />
+      ) : kind === "pdf" && file.url ? (
+        <iframe className="viewer viewer--frame" title={path} src={file.url} />
+      ) : kind === "image" && file.url ? (
+        <div className="viewer viewer--media"><img src={file.url} alt={path} /></div>
+      ) : kind === "video" && file.url ? (
+        <div className="viewer viewer--media"><video src={file.url} controls /></div>
+      ) : kind === "audio" && file.url ? (
+        <div className="viewer viewer--media"><audio src={file.url} controls /></div>
+      ) : (
+        <div className="viewer dim">
+          No preview for this file type ({Math.round((file.size ?? 0) / 1024)} KB).{" "}
+          {file.url && <a className="textlink" href={file.url} target="_blank" rel="noreferrer">Download it</a>}
+        </div>
+      )}
     </div>
   );
 }

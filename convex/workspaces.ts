@@ -95,6 +95,20 @@ export const listPanes = query({
   },
 });
 
+// Is any agent working in this workspace right now?
+export const busy = query({
+  args: { workspaceId: v.id("workspaces"), code: v.optional(v.string()) },
+  handler: async (ctx, { workspaceId, code }) => {
+    await requireReader(ctx, workspaceId, code);
+    const running = await ctx.db
+      .query("runs")
+      .withIndex("by_status", (q) => q.eq("status", "running"))
+      .filter((q) => q.eq(q.field("workspaceId"), workspaceId))
+      .first();
+    return !!running;
+  },
+});
+
 export const addPane = mutation({
   args: { workspaceId: v.id("workspaces"), title: v.string() },
   handler: async (ctx, { workspaceId, title }) => {

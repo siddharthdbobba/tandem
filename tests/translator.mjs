@@ -108,5 +108,14 @@ test("todo tool: each call becomes one compact todo event with the full list", (
   assert.ok(!out.some((e) => e.kind === "command" && e.text.startsWith("todo")));
 });
 
+test("browser MCP run: actions become readable browse events, no raw tool names", () => {
+  const { out } = replay("jcode-browser.jsonl");
+  const browse = out.filter((e) => e.kind === "browse").map((e) => e.text);
+  assert.ok(browse.includes("browser navigate: https://example.com"), browse.join(" | "));
+  assert.ok(browse.some((t) => t.startsWith("browser click")), browse.join(" | "));
+  assert.ok(!out.some((e) => /mcp__/.test(e.text)), "no raw mcp tool names");
+  assert.equal(out.at(-1).kind, "message");
+});
+
 console.log(results.join("\n"));
 process.exit(results.some((r) => r.startsWith("FAIL")) ? 1 : 0);

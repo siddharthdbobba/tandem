@@ -88,23 +88,69 @@ async function upload(buf, type) {
 // ---------- live browser view ----------
 
 // While an agent runs, push its browser's newest screenshot to Convex.
+// The browser folder is writable by sandboxed agents, so never follow a
+// symlink there: the worker (not the agent) would be the one reading/writing.
+function browserDir(workspaceId) {
+  const root = dirFor(workspaceId);
+  const dir = path.join(root, ".tandem", "browser");
+  try {
+    if (fs.realpathSync(dir) !== dir) return null;
+  } catch { return null; }
+  return dir;
+}
+function readPlain(file, max) {
+  const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  try {
+    const st = fs.fstatSync(fd);
+    if (!st.isFile() || st.size > max) throw new Error("not a plain file");
+    return fs.readFileSync(fd);
+  } finally { fs.closeSync(fd); }
+}
 const frameSeen = new Map(); // workspaceId -> live.json mtime
 async function pushFrame(workspaceId, by) {
-  const dir = path.join(dirFor(workspaceId), ".tandem", "browser");
+  const dir = browserDir(workspaceId);
+  if (!dir) return;
   try {
     const metaPath = path.join(dir, "live.json");
-    const st = fs.statSync(metaPath);
+    const st = fs.lstatSync(metaPath);
     if (frameSeen.get(workspaceId) === st.mtimeMs) return;
     frameSeen.set(workspaceId, st.mtimeMs);
-    const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
-    const img = fs.readFileSync(path.join(dir, "live.jpg"));
-    if (img.length > 5_000_000) return;
+    const meta = JSON.parse(readPlain(metaPath, 20_000).toString("utf8"));
+    const img = readPlain(path.join(dir, "live.jpg"), 5_000_000);
     const image = await upload(img, "image/jpeg");
     await client.mutation(api.worker.putFrame, {
       ...s, workspaceId, image, url: String(meta.url ?? ""), title: String(meta.title ?? ""), by,
     });
   } catch {}
 }
+
+// People taking control of the live browser: append their actions to the
+// workspace's input.jsonl, which the browser wrapper replays.
+const liveWorkspaces = new Map(); // workspaceId -> number of running runs
+let inputBusy = false;
+client.onUpdate(api.browser.pending, s, async (rows) => {
+  if (inputBusy || !rows.length) return;
+  inputBusy = true;
+  try {
+    for (const r of rows) {
+      const dir = liveWorkspaces.get(r.workspaceId) ? browserDir(r.workspaceId) : null;
+      if (dir) {
+        try {
+          const fd = fs.openSync(path.join(dir, "input.jsonl"),
+            fs.constants.O_WRONLY | fs.constants.O_APPEND | fs.constants.O_CREAT | fs.constants.O_NOFOLLOW, 0o660);
+          try {
+            if (fs.fstatSync(fd).isFile()) fs.writeSync(fd, JSON.stringify(r.action) + "\n");
+          } finally { fs.closeSync(fd); }
+        } catch (e) { log("browser input failed", e.message); }
+      }
+    }
+    await client.mutation(api.browser.done, { ...s, ids: rows.map((r) => r._id) });
+  } catch (e) {
+    log("browser input error", e.message);
+  } finally {
+    inputBusy = false;
+  }
+});
 
 async function syncWorkspace(workspaceId) {
   const now = readTree(dirFor(workspaceId));
@@ -318,6 +364,7 @@ async function runOne(run, job) {
   try { before = readTree(dir); } catch {}
   // Stream the agent's browser to everyone watching.
   const frames = setInterval(() => pushFrame(run.workspaceId, run.author), 700);
+  liveWorkspaces.set(run.workspaceId, (liveWorkspaces.get(run.workspaceId) ?? 0) + 1);
 
   // Stop the agent if anyone hits cancel.
   let cancelled = false;
@@ -366,6 +413,8 @@ async function runOne(run, job) {
 
   const code = await new Promise((res) => child.on("close", res));
   clearInterval(frames);
+  const left = (liveWorkspaces.get(run.workspaceId) ?? 1) - 1;
+  if (left > 0) liveWorkspaces.set(run.workspaceId, left); else liveWorkspaces.delete(run.workspaceId);
   await pushFrame(run.workspaceId, run.author);
   const ok = code === 0 || capped;
   unsub();
@@ -479,6 +528,140 @@ async function handleLogin(f) {
 }
 client.onUpdate(api.worker.loginQueue, s, (flows) => {
   for (const f of flows) handleLogin(f);
+});
+
+// ---------- per-person app connectors (remote MCP servers) ----------
+
+// Run a launcher subcommand with stdin and wait for it to exit.
+const sandboxIn = (argv, input) =>
+  new Promise((res) => {
+    let err = "";
+    const p = spawn("sudo", ["-n", SANDBOX, ...argv], { stdio: ["pipe", "ignore", "pipe"] });
+    p.stderr.on("data", (c) => (err += c));
+    p.on("close", (code) => res({ code, err: err.trim() }));
+    p.stdin.end(input);
+  });
+// Run a jcode command in the user's sandbox and collect its text output.
+function jcodeText(sandboxKey, args, timeoutMs = 60_000) {
+  return new Promise((resolve) => {
+    const child = jcodeAs(sandboxKey, LOGIN_CWD, args);
+    let out = "";
+    const t = setTimeout(() => child.kill("SIGTERM"), timeoutMs);
+    child.stdout.on("data", (c) => (out += c));
+    child.stderr.on("data", (c) => (out += c));
+    child.on("close", (code) => { clearTimeout(t); resolve({ code, out }); });
+  });
+}
+// jcode only reads mcp.json when the launcher writes it at the start of a
+// jcode run, so every connector command goes through jcodeText/jcodeAs.
+async function testConnector(c) {
+  const r = await jcodeText(c.sandboxKey, ["mcp", "test", c.name], 60_000);
+  const n = Number((r.out.match(/Tools: (\d+)/) ?? [])[1]);
+  return r.code === 0 && Number.isFinite(n) ? { ok: true, tools: n } : { ok: false, out: r.out };
+}
+const firstLine = (t) => (t || "").split("\n").map((l) => l.trim()).filter(Boolean).slice(-1)[0]?.replace(/^Error:\s*/, "").slice(0, 200) || "Couldn't connect";
+
+const pendingOAuth = new Map(); // connector id -> { child, port, state, done: Promise }
+const connBusy = new Set();
+async function handleConnector(c) {
+  if (connBusy.has(c._id)) return;
+  connBusy.add(c._id);
+  const upd = (from, status, extra = {}) => client.mutation(api.connectors.update, { ...s, id: c._id, from, status, ...extra }).catch(() => {});
+  try {
+    if (c.status === "removing") {
+      pendingOAuth.get(c._id)?.child.kill("SIGTERM");
+      pendingOAuth.delete(c._id);
+      await jcodeText(c.sandboxKey, ["mcp", "logout", c.name], 30_000);
+      const r = await sandboxIn([c.sandboxKey, LOGIN_CWD, "--remove-connector", c.name], "");
+      if (r.code !== 0) log("remove connector failed", c.name, r.err);
+      await upd("removing", "deleted");
+      log("connector removed", c.name, c.sandboxKey);
+      return;
+    }
+    if (c.status === "adding") {
+      const body = JSON.stringify({ url: c.url, ...(c.token ? { token: c.token } : {}) });
+      const r = await sandboxIn([c.sandboxKey, LOGIN_CWD, "--add-connector", c.name], body);
+      if (r.code !== 0) return void (await upd("adding", "error", { error: r.err || "Couldn't save that app" }));
+      // Already works (no sign-in needed, or a token)? Then we're done.
+      const t = await testConnector(c);
+      if (t.ok) {
+        await upd("adding", "connected", { tools: t.tools });
+        log("connector connected", c.name, c.sandboxKey, t.tools, "tools");
+        return;
+      }
+      if (c.auth !== "oauth") return void (await upd("adding", "error", { error: firstLine(t.out) }));
+      // Start the OAuth sign-in. jcode waits (up to 5 min) for the browser to
+      // hit its loopback callback; the person pastes that URL back to us.
+      const child = jcodeAs(c.sandboxKey, LOGIN_CWD, ["mcp", "login", c.name, "--no-browser"]);
+      let out = "";
+      const done = new Promise((res) => child.on("close", (code) => res({ code, out })));
+      const authUrl = await new Promise((res) => {
+        const t = setTimeout(() => res(null), 45_000);
+        const onData = (d) => {
+          out += d;
+          const m = out.match(/https:\/\/\S+redirect_uri=\S+/);
+          if (m) { clearTimeout(t); res(m[0]); }
+        };
+        child.stdout.on("data", onData);
+        child.stderr.on("data", onData);
+        child.on("close", () => { clearTimeout(t); res(null); });
+      });
+      const u = authUrl && new URL(authUrl);
+      const redirect = u && new URL(u.searchParams.get("redirect_uri") ?? "");
+      if (!u || !redirect || redirect.hostname !== "127.0.0.1") {
+        child.kill("SIGTERM");
+        return void (await upd("adding", "error", { error: firstLine(out) }));
+      }
+      pendingOAuth.set(c._id, { child, port: redirect.port, state: u.searchParams.get("state"), done });
+      done.then(() => setTimeout(() => pendingOAuth.delete(c._id), 1000));
+      await upd("adding", "awaiting_code", { authUrl });
+      log("connector awaiting sign-in", c.name, c.sandboxKey);
+      // Timed out without a paste: let the person try again.
+      done.then(async (r) => {
+        if (pendingOAuth.has(c._id) && !connBusy.has(c._id) && r.code !== 0) {
+          await upd("awaiting_code", "error", { error: "Sign-in timed out. Click Try again." });
+        }
+      });
+      return;
+    }
+    if (c.status === "submitting") {
+      const p = pendingOAuth.get(c._id);
+      if (!p) return void (await upd("submitting", "error", { error: "That sign-in expired. Click Try again." }));
+      // Deliver only the code and state to the sandbox's own listener. We
+      // build the URL ourselves from the port jcode chose, never the pasted host.
+      const pasted = new URL(c.code);
+      if (pasted.searchParams.get("state") !== p.state) {
+        p.child.kill("SIGTERM");
+        pendingOAuth.delete(c._id);
+        return void (await upd("submitting", "error", { error: "That link is from a different sign-in. Click Try again." }));
+      }
+      const q = new URLSearchParams();
+      for (const k of ["code", "state", "error", "error_description", "iss"]) {
+        const val = pasted.searchParams.get(k);
+        if (val !== null) q.set(k, val);
+      }
+      try {
+        await fetch(`http://127.0.0.1:${p.port}/callback?${q}`, { signal: AbortSignal.timeout(15_000) });
+      } catch {}
+      const r = await Promise.race([p.done, new Promise((res) => setTimeout(() => res(null), 45_000))]);
+      pendingOAuth.delete(c._id);
+      if (!r || r.code !== 0) {
+        p.child.kill("SIGTERM");
+        return void (await upd("submitting", "error", { error: firstLine(r?.out ?? "Sign-in didn't finish") }));
+      }
+      const t = await testConnector(c);
+      await upd("submitting", t.ok ? "connected" : "error", t.ok ? { tools: t.tools } : { error: firstLine(t.out) });
+      log("connector sign-in", c.name, c.sandboxKey, t.ok ? "ok" : "failed");
+    }
+  } catch (e) {
+    log("connector error", e.message);
+    await upd(c.status, "error", { error: "Something went wrong. Try again." });
+  } finally {
+    connBusy.delete(c._id);
+  }
+}
+client.onUpdate(api.connectors.queue, s, (rows) => {
+  for (const c of rows) handleConnector(c);
 });
 
 const stale = await client.mutation(api.worker.failStale, s);

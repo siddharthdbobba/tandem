@@ -90,6 +90,42 @@ if [ "${1:-}" = "--take-session" ]; then
   exit 0
 fi
 
+# Per-person app connectors (remote MCP servers). The list lives root-only, one
+# file per sandbox user, and is merged into ONLY that user's mcp.json below, so
+# a connector one person adds never reaches anyone else's agent.
+CONN_ROOT=/srv/tandem/connectors
+conn_file="$CONN_ROOT/$user.json"
+if [ "${1:-}" = "--add-connector" ] || [ "${1:-}" = "--remove-connector" ]; then
+  install -d -m 700 -o root -g root "$CONN_ROOT"
+  op="$1"; name="${2:-}"
+  [[ "$name" =~ ^[a-z][a-z0-9-]{0,29}$ ]] && [ "$name" != browser ] || { echo "bad name" >&2; exit 2; }
+  # --add-connector reads {"url": "https://...", "token": "..."?} on stdin.
+  head -c 20000 | python3 - "$conn_file" "$op" "$name" <<'PY' || exit 2
+import json, os, re, sys, tempfile
+path, op, name = sys.argv[1:4]
+try: d = json.load(open(path))
+except Exception: d = {}
+if op == "--add-connector":
+    req = json.load(sys.stdin)
+    url = req.get("url", "")
+    if not re.fullmatch(r"https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~%/+-]*)?", url) or len(url) > 300:
+        sys.exit("bad url")
+    entry = {"type": "http", "url": url}
+    tok = req.get("token") or ""
+    if tok:
+        if not re.fullmatch(r"[A-Za-z0-9._~+/=-]{1,4000}", tok): sys.exit("bad token")
+        entry["headers"] = {"Authorization": "Bearer " + tok}
+    if name not in d and len(d) >= 20: sys.exit("too many connectors")
+    d[name] = entry
+else:
+    d.pop(name, None)
+fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path))
+with os.fdopen(fd, "w") as f: json.dump(d, f)
+os.chmod(tmp, 0o600); os.replace(tmp, path)
+PY
+  exit 0
+fi
+
 [ "${1:-}" = "--" ] && shift
 [ "${1:-}" = "jcode" ] || { echo "only jcode allowed" >&2; exit 2; }
 shift
@@ -114,17 +150,18 @@ effort_env=()
 # .tandem/browser folder, which is what the live Browser view shows.
 shot_dir="$top/.tandem/browser"
 as_user mkdir -p "$shot_dir" 2>/dev/null || true
-as_user bash -c 'umask 077; mkdir -p "$1/.jcode"; cat > "$1/.jcode/mcp.json.tmp" && mv -f "$1/.jcode/mcp.json.tmp" "$1/.jcode/mcp.json"' _ "$home" <<JSON
-{
-  "mcpServers": {
-    "browser": {
-      "command": "/opt/tandem-browser/bin/tandem-browser-mcp",
-      "args": ["$shot_dir"],
-      "env": { "PLAYWRIGHT_BROWSERS_PATH": "/opt/tandem-browser/browsers" }
-    }
-  }
+python3 - "$conn_file" "$shot_dir" <<'PY' | as_user bash -c 'umask 077; mkdir -p "$1/.jcode"; cat > "$1/.jcode/mcp.json.tmp" && mv -f "$1/.jcode/mcp.json.tmp" "$1/.jcode/mcp.json"' _ "$home"
+import json, sys
+servers = {}
+try: servers.update(json.load(open(sys.argv[1])))
+except Exception: pass
+servers["browser"] = {
+    "command": "/opt/tandem-browser/bin/tandem-browser-mcp",
+    "args": [sys.argv[2]],
+    "env": {"PLAYWRIGHT_BROWSERS_PATH": "/opt/tandem-browser/browsers"},
 }
-JSON
+json.dump({"mcpServers": servers}, sys.stdout, indent=2)
+PY
 
 exec setpriv --reuid="$user" --regid=tandem --init-groups --inh-caps=-all \
   env -i HOME="$home" JCODE_HOME="$home/.jcode" USER="$user" LOGNAME="$user" \

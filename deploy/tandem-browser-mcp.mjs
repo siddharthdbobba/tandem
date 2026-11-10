@@ -19,7 +19,7 @@ const child = spawn(
   [
     "--headless", "--isolated", "--browser", "chromium", "--no-sandbox",
     "--viewport-size", "1280,800", "--output-dir", outDir,
-    "--image-responses", "omit",
+    "--image-responses", "omit", "--caps", "vision",
   ],
   { stdio: ["pipe", "pipe", "inherit"], env: process.env },
 );
@@ -47,7 +47,7 @@ child.stdout.on("data", (chunk) => {
     // Remember the page the agent is on (navigation responses include it).
     const txt = msg.result?.content?.map?.((c) => c.text ?? "").join("\n") ?? "";
     const u = txt.match(/Page URL: (\S+)/);
-    if (u) page = { url: u[1], title: (txt.match(/Page Title: (.*)/) ?? [])[1] ?? "" };
+    if (u) { page = { url: u[1], title: (txt.match(/Page Title: (.*)/) ?? [])[1] ?? "" }; opened = true; }
     // After any browser action the agent ran, refresh the live screenshot.
     if (msg.id !== undefined && pending.has(msg.id)) {
       pending.delete(msg.id);
@@ -97,6 +97,67 @@ child.on("exit", (code) => process.exit(code ?? 0));
 let shooting = false;
 let again = false;
 let page = { url: "", title: "" };
+let opened = false; // true once the agent has opened a page (no blank frames before that)
+
+// Call one of the child's tools on our own behalf (ids the agent never sees).
+function callOwn(name, args, timeoutMs = 15000) {
+  const id = PREFIX + ++ownId;
+  return new Promise((resolve) => {
+    own.set(id, resolve);
+    child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } }) + "\n");
+    setTimeout(() => { own.delete(id); resolve(null); }, timeoutMs);
+  });
+}
+const urlFrom = (res) => {
+  const txt = res?.result?.content?.map?.((c) => c.text ?? "").join("\n") ?? "";
+  const u = txt.match(/Page URL: (\S+)/);
+  if (u) page = { url: u[1], title: (txt.match(/Page Title: (.*)/) ?? [])[1] ?? "" };
+};
+
+// People in the workspace can drive the browser too. The worker appends their
+// actions to <shotDir>/input.jsonl; we replay new lines here.
+const inputFile = shotDir ? path.join(shotDir, "input.jsonl") : null;
+let inputPos = 0;
+try { if (inputFile) inputPos = fs.statSync(inputFile).size; } catch {}
+let handling = false;
+async function pollInput() {
+  if (!inputFile || handling) return;
+  let size = 0;
+  try { size = fs.statSync(inputFile).size; } catch { return; }
+  if (size < inputPos) inputPos = 0; // file was reset
+  if (size === inputPos) return;
+  handling = true;
+  try {
+    const fd = fs.openSync(inputFile, "r");
+    const buf = Buffer.alloc(Math.min(size - inputPos, 64_000));
+    fs.readSync(fd, buf, 0, buf.length, inputPos);
+    fs.closeSync(fd);
+    inputPos += buf.length;
+    for (const line of buf.toString("utf8").split("\n")) {
+      let a;
+      try { a = JSON.parse(line); } catch { continue; }
+      if (!opened && a.kind !== "navigate") continue;
+      const n = (v, max) => Math.max(0, Math.min(max, Math.round(Number(v) || 0)));
+      let res = null;
+      if (a.kind === "click") res = await callOwn("browser_mouse_click_xy", { x: n(a.x, 1280), y: n(a.y, 800) });
+      else if (a.kind === "scroll") res = await callOwn("browser_mouse_wheel", { deltaX: 0, deltaY: Math.max(-3000, Math.min(3000, Number(a.dy) || 0)) });
+      else if (a.kind === "key" && /^[A-Za-z0-9 ]$|^(Enter|Backspace|Tab|Escape|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|PageDown|PageUp|Home|End|Delete)$/.test(a.key ?? ""))
+        res = await callOwn("browser_press_key", { key: a.key });
+      else if (a.kind === "type" && typeof a.text === "string") {
+        for (const ch of a.text.slice(0, 500)) await callOwn("browser_press_key", { key: ch === "\n" ? "Enter" : ch }, 5000);
+      } else if (a.kind === "back") res = await callOwn("browser_navigate_back", {});
+      else if (a.kind === "reload" && page.url) res = await callOwn("browser_navigate", { url: page.url });
+      else if (a.kind === "navigate" && /^https?:\/\/[^\s]{1,2000}$/.test(a.url ?? "")) { res = await callOwn("browser_navigate", { url: a.url }, 30000); opened = true; }
+      urlFrom(res);
+      await shoot();
+    }
+  } catch {}
+  handling = false;
+}
+setInterval(pollInput, 250).unref();
+// Keep the view moving while pages load or animate, not only after tool calls.
+setInterval(() => { if (opened) shoot(); }, 1500).unref();
+
 async function shoot() {
   if (!shotDir) return;
   if (shooting) { again = true; return; }

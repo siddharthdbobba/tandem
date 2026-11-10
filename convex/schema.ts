@@ -215,5 +215,53 @@ export default defineSchema({
     title: v.string(),
     by: v.string(), // whose agent is browsing
     at: v.number(),
+    controller: v.optional(v.string()), // name of the person driving it right now
+    controllerAt: v.optional(v.number()),
   }).index("by_workspace", ["workspaceId"]),
+
+  // Clicks/keys/scrolls a person sends to the live agent browser. The worker
+  // hands them to the browser in that workspace, then deletes the row.
+  browserInputs: defineTable({
+    workspaceId: v.id("workspaces"),
+    userId: v.id("users"),
+    action: v.object({
+      kind: v.union(
+        v.literal("click"), v.literal("scroll"), v.literal("key"), v.literal("type"),
+        v.literal("back"), v.literal("reload"), v.literal("navigate"),
+      ),
+      x: v.optional(v.number()),
+      y: v.optional(v.number()),
+      dy: v.optional(v.number()),
+      key: v.optional(v.string()),
+      text: v.optional(v.string()),
+      url: v.optional(v.string()),
+    }),
+  }).index("by_workspace", ["workspaceId"]),
+
+  // A person's connected apps (remote MCP servers). Per person, never shared:
+  // only that person's prompts get these tools. Tokens never live here; OAuth
+  // tokens stay in the person's own sandbox and bearer tokens go straight to a
+  // root-only file on the VM.
+  connectors: defineTable({
+    userId: v.id("users"),
+    name: v.string(), // slug used as the MCP server name, e.g. "notion"
+    label: v.string(),
+    url: v.string(),
+    auth: v.union(v.literal("oauth"), v.literal("token"), v.literal("none")),
+    status: v.union(
+      v.literal("adding"), // worker should write config (+ start OAuth if needed)
+      v.literal("awaiting_code"), // user must open authUrl and paste back the redirect URL
+      v.literal("submitting"), // user pasted; worker delivers the callback
+      v.literal("connected"),
+      v.literal("error"),
+      v.literal("removing"), // worker should drop config + tokens, then delete the row
+    ),
+    token: v.optional(v.string()), // bearer token in transit only; cleared once the worker stores it
+    authUrl: v.optional(v.string()),
+    code: v.optional(v.string()),
+    tools: v.optional(v.number()),
+    error: v.optional(v.string()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_status", ["status"]),
 });

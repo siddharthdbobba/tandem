@@ -52,6 +52,7 @@ export const deleteTestData = internalMutation({
         if (!dryRun) await ctx.storage.delete(fr.image);
         await del("browserFrames", fr._id); budget--;
       }
+      for (const bi of await ctx.db.query("browserInputs").withIndex("by_workspace", (q) => q.eq("workspaceId", w._id)).collect()) { await del("browserInputs", bi._id); budget--; }
       for (const m of await ctx.db.query("messages").withIndex("by_workspace", (q) => q.eq("workspaceId", w._id)).collect()) { await del("messages", m._id); budget--; }
       for (const c of await ctx.db.query("changes").withIndex("by_workspace", (q) => q.eq("workspaceId", w._id)).collect()) { await del("changes", c._id); budget--; }
       for (const pb of await ctx.db.query("publishes").withIndex("by_workspace_path", (q) => q.eq("workspaceId", w._id)).collect()) { await del("publishes", pb._id); budget--; }
@@ -67,6 +68,7 @@ export const deleteTestData = internalMutation({
       for (const m of await ctx.db.query("members").withIndex("by_user", (q) => q.eq("userId", u._id)).collect()) await del("members", m._id);
       for (const c of await ctx.db.query("connections").withIndex("by_user_provider", (q) => q.eq("userId", u._id)).collect()) await del("connections", c._id);
       for (const f of await ctx.db.query("loginFlows").withIndex("by_user", (q) => q.eq("userId", u._id)).collect()) await del("loginFlows", f._id);
+      for (const c of await ctx.db.query("connectors").withIndex("by_user", (q) => q.eq("userId", u._id)).collect()) await del("connectors", c._id);
       for (const s of await ctx.db.query("authSessions").withIndex("userId", (q) => q.eq("userId", u._id)).collect()) {
         for (const t of await ctx.db.query("authRefreshTokens").withIndex("sessionId", (q) => q.eq("sessionId", s._id)).collect()) await del("authRefreshTokens", t._id);
         await del("authSessions", s._id);

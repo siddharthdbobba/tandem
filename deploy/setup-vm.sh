@@ -33,6 +33,9 @@ table inet tandem {
     type filter hook output priority 0; policy accept;
     meta skgid tandem ip daddr { 127.0.0.53, 127.0.0.54 } udp dport 53 accept
     meta skgid tandem ip daddr { 127.0.0.53, 127.0.0.54 } tcp dport 53 accept
+    # Replies on connections someone else opened (e.g. an OAuth callback delivered by the
+    # worker to a sandbox's loopback listener). The sandbox still can't open new ones.
+    meta skgid tandem ct state established,related accept
     meta skgid tandem oifname "lo" reject
     meta skgid tandem ip daddr { 10.0.0.0/8, 100.64.0.0/10, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16 } reject
     meta skgid tandem ip6 daddr { fc00::/7, fe80::/10 } reject

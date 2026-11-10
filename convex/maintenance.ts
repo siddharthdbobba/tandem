@@ -69,6 +69,7 @@ export const purgeWorkspace = internalMutation({
       for (const c of await ctx.db.query("changes").withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId)).take(budget)) await drop(c._id);
       for (const pb of await ctx.db.query("publishes").withIndex("by_workspace_path", (q) => q.eq("workspaceId", workspaceId)).collect()) await drop(pb._id);
       for (const pr of await ctx.db.query("presence").withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId)).collect()) await drop(pr._id);
+      for (const bi of await ctx.db.query("browserInputs").withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId)).collect()) await drop(bi._id);
       for (const fr of await ctx.db.query("browserFrames").withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId)).collect()) {
         await ctx.storage.delete(fr.image);
         await drop(fr._id);
@@ -87,7 +88,7 @@ export const sweepOrphans = internalMutation({
   args: {},
   handler: async (ctx) => {
     const counts: Record<string, number> = {};
-    for (const t of ["messages", "changes", "publishes", "browserFrames", "files", "deletions"] as const) {
+    for (const t of ["messages", "changes", "publishes", "browserFrames", "browserInputs", "files", "deletions"] as const) {
       for (const r of await ctx.db.query(t as any).take(1000) as any[]) {
         if (await ctx.db.get(r.workspaceId)) continue;
         if (t === "files") { await deleteFile(ctx, r._id); }

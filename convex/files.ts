@@ -116,7 +116,8 @@ export const browserFrame = query({
       .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
       .unique();
     if (!f) return null;
-    return { url: f.url, title: f.title, by: f.by, at: f.at, image: await ctx.storage.getUrl(f.image) };
+    const controller = f.controllerAt && Date.now() - f.controllerAt < 15_000 ? f.controller : undefined;
+    return { url: f.url, title: f.title, by: f.by, at: f.at, controller, image: await ctx.storage.getUrl(f.image) };
   },
 });
 

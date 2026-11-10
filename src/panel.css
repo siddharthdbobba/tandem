@@ -328,3 +328,4 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="tab"]:focus-v
   .editor > .pane-head > strong { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .editor > .pane-head .seg { order: 5; }
 }
+.side__tablist { display: flex; align-items: stretch; gap: inherit; }

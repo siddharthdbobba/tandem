@@ -24,13 +24,15 @@ export function SidePanel({ workspaceId, onClose, tab, setTab, unread }: {
 }) {
   return (
     <aside className="side" aria-label="Workspace panel">
-      <div className="side__tabs" role="tablist">
+      <div className="side__tabs">
+        <div className="side__tablist" role="tablist">
         <button role="tab" aria-selected={tab === "chat"} className={tab === "chat" ? "on" : ""} onClick={() => setTab("chat")}>
           Chat{unread > 0 && tab !== "chat" ? <span className="side__badge">{unread}</span> : null}
         </button>
         <button role="tab" aria-selected={tab === "settings"} className={tab === "settings" ? "on" : ""} onClick={() => setTab("settings")}>
           Workspace
         </button>
+        </div>
         <button className="ghost side__close" onClick={onClose} aria-label="Close panel" title="Close">×</button>
       </div>
       {tab === "chat" ? <Chat workspaceId={workspaceId} /> : <WorkspaceSettings workspaceId={workspaceId} />}

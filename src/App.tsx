@@ -573,9 +573,9 @@ function Settings() {
 
         <section>
           <h3>Profile</h3>
-          <label>Display name</label>
+          <label htmlFor="display-name">Display name</label>
           <div className="row">
-            <input value={name ?? p.name} onChange={(e) => setName(e.target.value)} maxLength={40} />
+            <input id="display-name" value={name ?? p.name} onChange={(e) => setName(e.target.value)} maxLength={40} />
             <button disabled={name === null || name === p.name}
               onClick={async () => { await update({ name: name! }); setName(null); flash("Name saved"); }}>Save</button>
           </div>

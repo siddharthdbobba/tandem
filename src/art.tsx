@@ -87,7 +87,7 @@ export function WorkspaceMock() {
           <span>campsites.pdf</span>
         </div>
         <div className="mock__main">
-          <div className="mock__msg"><b style={{ color: "#c76a2c" }}>Maya</b> Find a campsite near Tuolumne for Saturday and add it to the itinerary</div>
+          <div className="mock__msg"><b style={{ color: "#a4521b" }}>Maya</b> Find a campsite near Tuolumne for Saturday and add it to the itinerary</div>
           <div className="mock__plan">
             <span className="done">✓ Checked recreation.gov for open sites</span>
             <span className="now">● Comparing Tuolumne vs. Porcupine Flat</span>

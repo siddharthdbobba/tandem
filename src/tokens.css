@@ -5,7 +5,7 @@
   --color-paper-3: #ebeae3;
   --color-ink: #12161d;
   --color-ink-2: #39414a;
-  --color-muted: #68716f;
+  --color-muted: #5a6361; /* 4.5:1+ on paper-3 and accent-soft */
   --color-rule: #e2e1d9;
   --color-rule-2: #cfcec4;
 

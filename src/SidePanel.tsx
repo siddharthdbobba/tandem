@@ -30,6 +30,15 @@ export function SidePanel({ workspaceId, onClose, tab, setTab, unread }: {
   );
 }
 
+const escapeRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// Wrap @Name (first names of members) and @ai in a highlight span, in already-sanitized HTML text.
+const highlightMentions = (html: string, names: string[]) => {
+  const firsts = ["ai", ...names.map((n) => n.split(" ")[0])].filter(Boolean).map(escapeRe);
+  if (!firsts.length) return html;
+  const re = new RegExp(`(^|[\\s>(])@(${firsts.join("|")})\\b`, "gi");
+  return html.replace(re, (_m, pre, n) => `${pre}<span class="mention">@${n}</span>`);
+};
+
 const time = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
 function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
@@ -41,6 +50,15 @@ function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
   const [text, setText] = useState("");
   const [err, setErr] = useState("");
   const end = useRef<HTMLDivElement>(null);
+  const members = useQuery(api.workspaces.members, { workspaceId, code });
+  const names = (members ?? []).map((x) => x.name);
+  const myName = me?.profile?.name ?? "";
+  const mentionsMe = (t: string) => !!myName && new RegExp(`@${escapeRe(myName.split(" ")[0])}\\b`, "i").test(t);
+  // "@ma" at the end of the input suggests matching people (and the AI).
+  const partial = text.match(/@([\w-]*)$/)?.[1];
+  const suggest = partial === undefined ? [] : ["ai", ...names.map((n) => n.split(" ")[0])]
+    .filter((n, i, a) => a.indexOf(n) === i && n.toLowerCase().startsWith(partial.toLowerCase()) && n.toLowerCase() !== partial.toLowerCase())
+    .slice(0, 5);
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [msgs?.length]);
   return (
     <div className="chat">
@@ -81,7 +99,8 @@ function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
                   })}
                 </div>
               ) : (
-                <div className={`msg__text md ${ai ? "to-ai" : ""}`} dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }} />
+                <div className={`msg__text md ${ai ? "to-ai" : ""} ${mentionsMe(m.text) ? "mentions-me" : ""}`}
+                  dangerouslySetInnerHTML={{ __html: highlightMentions(renderMarkdown(m.text), names) }} />
               )}
             </div>
           );
@@ -99,6 +118,14 @@ function Chat({ workspaceId }: { workspaceId: Id<"workspaces"> }) {
           setErr("");
           try { await send({ workspaceId, text: t }); } catch (x) { setText(t); setErr(String((x as Error).message).split("\n")[0].replace(/^.*Error: /, "")); }
         }}>
+          {suggest.length > 0 && (
+            <div className="mention-pop" role="listbox" aria-label="Mention someone">
+              {suggest.map((n) => (
+                <button key={n} type="button" role="option" aria-selected="false"
+                  onClick={() => setText(text.replace(/@[\w-]*$/, `@${n} `))}>@{n}{n === "ai" ? <span className="dim"> · ask the AI</span> : null}</button>
+              ))}
+            </div>
+          )}
           <textarea rows={1} value={text} placeholder="Message the group… (@ai to ask the AI)" aria-label="Message the group"
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />

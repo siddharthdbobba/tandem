@@ -234,7 +234,13 @@ function AppBar({ children }: { children?: React.ReactNode }) {
   );
 }
 
-const TEMPLATE_ICON: Record<string, string> = { trip: "🏔️", school: "📚", app: "🛠️", blank: "⛺" };
+// "5m ago", "3h ago", "2d ago".
+const ago = (t: number) => {
+  const m = Math.round((Date.now() - t) / 60000);
+  return m < 1 ? "just now" : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`;
+};
+
+const TEMPLATE_ICON: Record<string, string> = { trip: "🏔️", school: "📚", app: "🛠️", study: "🧠", party: "🎉", side: "🚀", blank: "⛺" };
 
 function Home() {
   const workspaces = useQuery(api.workspaces.list);
@@ -279,7 +285,7 @@ function Home() {
           <div className="tpl-grid">
             {templates?.map((t) => (
               <button key={t.id} type="button" className={`tpl ${picked === t.id ? "on" : ""}`}
-                onClick={() => { setPicked(t.id); setName(t.id === "blank" ? "" : t.name.replace(/^Plan a /, "Our ").replace(/^Build an app$/, "Our app").replace(/^School \/ group project$/, "Group project")); }}>
+                onClick={() => { setPicked(t.id); setName(t.id === "blank" ? "" : t.name.replace(/^Plan a /, "Our ").replace(/^Build an app$/, "Our app").replace(/^School \/ group project$/, "Group project").replace(/^Study group$/, "Study group").replace(/^Plan an event$/, "Our event").replace(/^Side project$/, "Our side project")); }}>
                 <span className="tpl__icon" aria-hidden="true">{TEMPLATE_ICON[t.id] ?? t.emoji}</span>
                 <span className="tpl__name">{t.name}</span>
                 <span className="tpl__blurb">{t.blurb}</span>
@@ -313,8 +319,13 @@ function Home() {
                 <li key={w._id}>
                   <a href={`#/w/${w._id}`} className="wslist__row">
                     <span className="wslist__icon" aria-hidden="true">{TEMPLATE_ICON[w.template ?? "blank"] ?? "⛺"}</span>
-                    <span className="wslist__name">{w.name}</span>
-                    <span className="wslist__meta">{w.owner === me?.profile?.name ? "yours" : `shared by ${w.owner}`}</span>
+                    <span className="wslist__text">
+                      <span className="wslist__name">{w.name}</span>
+                      {w.activity && <span className="wslist__activity">{w.activity.text} · {ago(w.activity.at)}</span>}
+                    </span>
+                    <span className="wslist__meta">
+                      {w.people > 1 ? `${w.people} people` : "just you"}{w.owner === me?.profile?.name ? "" : ` · ${w.owner}'s`}
+                    </span>
                     <span className="wslist__go" aria-hidden="true">→</span>
                   </a>
                 </li>

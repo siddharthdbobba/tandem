@@ -77,6 +77,61 @@ export const TEMPLATES: Template[] = [
     ],
   },
   {
+    id: "study",
+    name: "Study group",
+    emoji: "🧠",
+    blurb: "Shared notes, practice questions and a plan before the exam.",
+    instructions:
+      "This workspace is a study group. Explain things simply with examples, quiz people when asked, " +
+      "and keep notes.md organized by topic. Cite sources for facts. Never just hand over answers to graded work.",
+    files: [
+      { path: "notes.md", content: "# Study notes\n\n- **Class:** TBD\n- **Exam date:** TBD\n\n## Topics\n- \n" },
+      { path: "questions.md", content: "# Practice questions\n\n" },
+    ],
+    prompts: [
+      "Here are the topics for our exam: … Make a study plan for the next week in notes.md",
+      "Write 10 practice questions on the first topic in questions.md, answers at the bottom",
+      "Explain the hardest topic like we're new to it, with an example",
+    ],
+  },
+  {
+    id: "party",
+    name: "Plan an event",
+    emoji: "🎉",
+    blurb: "Birthday, formal or potluck: guest list, tasks and a budget.",
+    instructions:
+      "This workspace plans an event. Keep plan.md (date, place, tasks with owners) and budget.md current. " +
+      "Use the browser to check real venues, prices and hours, and include links.",
+    files: [
+      { path: "plan.md", content: "# Event plan\n\n- **What:** TBD\n- **When:** TBD\n- **Where:** TBD\n\n## Tasks\n| Task | Who | Done |\n|---|---|---|\n| | | |\n" },
+      { path: "guests.md", content: "# Guests\n\n- \n" },
+      { path: "budget.md", content: "# Budget\n\n| Item | Cost | Paid by |\n|---|---|---|\n| | | |\n" },
+    ],
+    prompts: [
+      "We're planning a birthday dinner for 10 people near downtown. Find 3 restaurant options and add them to plan.md",
+      "Split the tasks in plan.md fairly between the people in this workspace",
+      "Make a shopping list and estimate the budget in budget.md",
+    ],
+  },
+  {
+    id: "side",
+    name: "Side project",
+    emoji: "🚀",
+    blurb: "Brainstorm, research and pitch an idea with co-founders.",
+    instructions:
+      "This workspace develops a side project or startup idea. Be candid about risks, back claims with sources, " +
+      "and keep idea.md as the one-page summary of what we're building, for whom, and why now.",
+    files: [
+      { path: "idea.md", content: "# The idea\n\n- **Problem:** TBD\n- **For whom:** TBD\n- **Solution:** TBD\n- **Why now:** TBD\n" },
+      { path: "research.md", content: "# Research\n\n## Competitors\n- \n" },
+    ],
+    prompts: [
+      "Here's our idea: … Fill in idea.md and list the 3 biggest risks",
+      "Research competitors on the web and summarize them in research.md with links",
+      "Draft a one-page pitch we could send to a friend for feedback",
+    ],
+  },
+  {
     id: "blank",
     name: "Blank workspace",
     emoji: "⛺",

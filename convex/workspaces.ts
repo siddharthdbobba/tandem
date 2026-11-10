@@ -19,9 +19,24 @@ export const list = query({
     const out = [];
     for (const m of ms) {
       const w = await ctx.db.get(m.workspaceId);
-      if (w) out.push({ _id: w._id, name: w.name, template: w.template, owner: (await getProfile(ctx, w.ownerId))?.name ?? "?" });
+      if (!w) continue;
+      // Latest activity: newest chat message or AI prompt, whichever is more recent.
+      const msg = await ctx.db.query("messages").withIndex("by_workspace", (q) => q.eq("workspaceId", w._id)).order("desc").first();
+      let run: { _creationTime: number; author: string; prompt: string } | null = null;
+      for (const p of await ctx.db.query("panes").withIndex("by_workspace", (q) => q.eq("workspaceId", w._id)).collect()) {
+        const r = await ctx.db.query("runs").withIndex("by_pane", (q) => q.eq("paneId", p._id)).order("desc").first();
+        if (r && (!run || r._creationTime > run._creationTime)) run = r;
+      }
+      const activity =
+        msg && (!run || msg._creationTime > run._creationTime)
+          ? { at: msg._creationTime, text: `${msg.author}: ${msg.poll ? "📊 " + msg.poll.question : msg.text}`.slice(0, 90) }
+          : run
+            ? { at: run._creationTime, text: `${run.author} asked the AI: ${run.prompt}`.slice(0, 90) }
+            : null;
+      const people = (await ctx.db.query("members").withIndex("by_workspace_user", (q) => q.eq("workspaceId", w._id)).collect()).length;
+      out.push({ _id: w._id, name: w.name, template: w.template, owner: (await getProfile(ctx, w.ownerId))?.name ?? "?", activity, people, at: activity?.at ?? w._creationTime });
     }
-    return out.reverse();
+    return out.sort((a, b) => b.at - a.at);
   },
 });
 

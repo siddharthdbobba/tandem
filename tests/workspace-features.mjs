@@ -21,7 +21,7 @@ const anon = new ConvexHttpClient(URL);
 
 await test("templates are listed and a trip workspace is seeded with files + instructions", async () => {
   const ts = await ann.query(api.workspaces.templates, {});
-  assert.deepEqual(ts.map((t) => t.id), ["trip", "school", "app", "blank"]);
+  assert.deepEqual(ts.map((t) => t.id), ["trip", "school", "app", "study", "party", "side", "blank"]);
   const ws = await ann.mutation(api.workspaces.create, { name: "Yosemite", template: "trip" });
   const tree = await ann.query(api.files.tree, { workspaceId: ws });
   assert.deepEqual(tree.map((f) => f.path).sort(), ["budget.md", "itinerary.md", "packing.md"]);
